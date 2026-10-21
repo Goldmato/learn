@@ -18,7 +18,8 @@
  * explanation (the user reads this file live).
  *
  * Commands:
- *   /md-log <filepath>  — Link a markdown file and backfill the session.
+ *   /md-log [filepath]  — Link a markdown file and backfill the session. In Termy,
+ *                         the active Obsidian note is used when filepath is omitted.
  *   /md-unlog           — Stop logging.
  *
  * Append-only. No send-back-to-agent functionality (that lived in the old
@@ -30,6 +31,41 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const QA_TOOLS = new Set(["quiz", "ask_user_question"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getTermyActiveFilePath(): { filePath: string | null; error?: string } {
+	const contextFilePath = process.env.TERMY_CONTEXT_PATH;
+	if (!contextFilePath) return { filePath: null };
+
+	let snapshot: unknown;
+	try {
+		snapshot = JSON.parse(fs.readFileSync(contextFilePath, "utf-8"));
+	} catch (error) {
+		return {
+			filePath: null,
+			error: `Could not read Termy context at ${contextFilePath}: ${error instanceof Error ? error.message : String(error)}`,
+		};
+	}
+
+	if (!isRecord(snapshot)) {
+		return { filePath: null, error: "Termy context snapshot is not a JSON object." };
+	}
+
+	const activeFile = snapshot.activeFile;
+	if (activeFile === null || activeFile === undefined) return { filePath: null };
+	if (!isRecord(activeFile)) {
+		return { filePath: null, error: "Termy context has an invalid activeFile value." };
+	}
+
+	const filePath = activeFile.filePath;
+	if (typeof filePath !== "string" || !filePath.trim()) {
+		return { filePath: null, error: "Termy context activeFile has no valid filePath." };
+	}
+	return { filePath: filePath.trim() };
+}
 
 export default function mdLog(pi: ExtensionAPI) {
 	let logFile: string | null = null;
@@ -279,35 +315,19 @@ export default function mdLog(pi: ExtensionAPI) {
 	// --- Commands ---
 
 	pi.registerCommand("md-log", {
-		description: "Mirror the session to a markdown file (backfills history)",
+		description: "Mirror the session to a markdown file; in Termy, defaults to the active note",
 		handler: async (args, ctx: any) => {
-			// Resolve either the explicit argument or try to detect the currently
-			// active / focused file exposed by the host (Obsidian, UI, etc).
-			function resolveLogTarget(argsStr: string, ctxObj: any): string | null {
-				const direct = argsStr.trim();
-				if (direct) return direct;
-
-				// Candidate property names used by different hosts / integrations.
-				const candidates = [
-					ctxObj.activeFilePath,
-					ctxObj.activeFile?.path,
-					ctxObj.workspace?.activeFile?.path,
-					ctxObj.vault?.getActiveFile?.()?.path,
-					ctxObj.ui?.activeFilePath,
-					typeof ctxObj.ui?.getActiveFilePath === "function" ? ctxObj.ui.getActiveFilePath() : undefined,
-				];
-
-				for (const value of candidates) {
-					if (typeof value === "string" && value.trim()) {
-						return value.trim();
-					}
-				}
-				return null;
-			}
-
-			const filepath = resolveLogTarget(args, ctx);
+			let filepath = args.trim();
 			if (!filepath) {
-				ctx.ui.notify("Usage: /md-log <filepath> or open a note first", "warning");
+				const termyContext = getTermyActiveFilePath();
+				if (termyContext.error) {
+					ctx.ui.notify(termyContext.error, "error");
+					return;
+				}
+				filepath = termyContext.filePath ?? "";
+			}
+			if (!filepath) {
+				ctx.ui.notify("Usage: /md-log <filepath> or open a note in Obsidian first", "warning");
 				return;
 			}
 			if (typeof ctx.isIdle === "function" && !ctx.isIdle()) {
