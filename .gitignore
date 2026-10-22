@@ -147,3 +147,9 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+# OS junk and runtime state
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+.memory/
