@@ -1,6 +1,7 @@
 # learn
-
 Fork of [amosblomqvist/learn](https://github.com/amosblomqvist/learn) with Termy support for linking the active Obsidian note through `/md-log`.
+
+Currently only compatible with the Termy Obsidian terminal plugin. Future compatibility is not planned.
 
 [![video](assets/thumbnail.png)](https://www.youtube.com/watch?v=kzcI5F4tGiU)
 
