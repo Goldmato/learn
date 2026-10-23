@@ -40,13 +40,11 @@ Keep the idea intact but trust the maker to compose; if your brief lists more th
 
 ## Invoke
 
-Dispatch the maker with the `subagent` tool:
+With tintinweb's `pi-subagents` extension, dispatch the custom maker type with `Agent`:
 
 ```
-subagent(agent="mermaid-maker", task="<your minimal, concrete brief>")
-```
-```
-subagent(agent="svg-maker", task="<your minimal, concrete brief>")
+Agent({ subagent_type: "mermaid-maker", prompt: "<your minimal, concrete brief>", description: "Create a <kind> visual", run_in_background: false })
+Agent({ subagent_type: "svg-maker", prompt: "<your minimal, concrete brief>", description: "Create a geometric visual", run_in_background: false })
 ```
 
 The maker owns its own purpose-built tools (`write_*`/`edit_*`/`render_*`) — it authors the source, renders it to a PNG, **looks at the PNG and iterates until it is correct and clean**, publishes it into the vault with a unique filename, and returns:

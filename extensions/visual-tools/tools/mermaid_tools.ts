@@ -7,11 +7,9 @@
  *   render_mermaid  — render whatever is in the file → PNG, returned inline;
  *                     with `save_as`, also publish it into <cwd>/viz
  *
- * Bundled inside the visual-tools extension and exposed to subagents via the
- * interactive-subagents `registerToolExtension` hook (see ../index.ts). NOT a
- * global pi extension — loaded by the spawned child pi process for any subagent
- * whose `tools:` frontmatter includes these names (currently just
- * mermaid-maker). All three names map to this one file.
+ * Loaded directly by tintinweb/pi-subagents through the mermaid-maker agent's
+ * `extensions:` path and `ext:` tool selectors. All three names map to this
+ * one file.
  *
  * Rendering shells out to the bundled @mermaid-js/mermaid-cli (`mmdc`) with a
  * puppeteer config pointing at an installed Chrome, so no Chromium download is

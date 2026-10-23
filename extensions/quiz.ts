@@ -897,6 +897,7 @@ export default function quiz(pi: ExtensionAPI) {
 			"Options are shuffled before display by default, so don't worry about which position you list the correct answer in. Set shuffle: false only when option order is meaningful (ordered values, or an 'All/None of the above' option that must stay last).",
 			"To probe nuance, ask several quick quiz questions and adapt each one based on the previous answers, rather than writing one giant question.",
 			"Don't leak the answer through formatting: keep option phrasing/length even and don't hint which is correct.",
+			"For explanations and tutoring prose, use Obsidian 1.14+ color highlights sparingly and consistently: ==🟢...== for correct answers/key takeaways, ==🔴...== for misconceptions/incorrect claims, ==🟡...== for cautions or important caveats, ==🔵...== for definitions/context, ==🟣...== for relationships/connections, and ==🟠...== for actions/next steps. Highlight only the shortest useful phrase or sentence; never mark an option before the user answers.",
 		],
 		parameters: QuizParams,
 
