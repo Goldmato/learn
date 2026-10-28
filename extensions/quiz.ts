@@ -1,14 +1,19 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import * as fs from "node:fs";
 import {
 	Editor,
 	type EditorTheme,
 	Key,
 	Text,
+	type OverlayHandle,
 	matchesKey,
 	truncateToWidth,
 	wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { clearAnswerModal, suspendAnswerModal, trackAnswerModal } from "../lib/answer-modal.ts";
+import { appendQuizScratchpad, extractQuizScratchpad } from "../lib/md-log-format.ts";
+import { normalizeQuizOptions, shuffleQuizOptions, type QuizOption } from "../lib/quiz-options.ts";
 
 // ────────────────────────────────────────────────────────────────────────────
 // quiz — a GRADED sibling of ask_user_question.
@@ -22,12 +27,6 @@ import { Type } from "@sinclair/typebox";
 // free-text mode and no "Other" option, because a free-text answer can't be
 // graded against a correct index.
 // ────────────────────────────────────────────────────────────────────────────
-
-interface QuizOption {
-	label: string;
-	value: string;
-	description?: string;
-}
 
 interface DisplayOption extends QuizOption {
 	id: string;
@@ -51,7 +50,7 @@ const DONT_KNOW_INDEX = 0; // real options are 1-based; submit uses -1
 
 // Unified response from either ask* component. answers holds the real
 // selections (empty when dontKnow); note is the optional free-text the user
-// typed in the always-present note field (kept only when non-empty).
+// typed in the always-present note field, later appended to the md-log scratchpad.
 interface QuizResponse {
 	dontKnow: boolean;
 	note?: string;
@@ -68,15 +67,17 @@ interface DisplayedOption {
 
 interface QuizResultDetails {
 	status: QuizStatus;
+	interactionId?: string;
 	question: string;
 	context?: string;
+	conceptId?: string;
 	mode: QuizMode;
 	answers: OptionAnswer[];
 	correctIndices: number[];
 	options?: DisplayedOption[]; // full option list in display order, for the transcript
 	correct?: boolean;
 	dontKnow?: boolean; // user selected "I don't know" instead of guessing
-	note?: string; // optional free-text from the always-present note field (any answer)
+	scratchpad?: string;
 	explanation?: string;
 	message?: string;
 }
@@ -93,13 +94,20 @@ const QuizParams = Type.Object({
 	question: Type.String({
 		description: "The single quiz question to ask. Ask exactly one question per tool call.",
 	}),
+	summaryTitle: Type.Optional(
+		Type.String({ description: "Optional concise 3-6 word summary used as the md-log quiz heading." }),
+	),
+	conceptId: Type.Optional(
+		Type.String({ description: "Stable concept identifier used for teaching mastery tracking. Supply this for graded teaching questions." }),
+	),
 	details: Type.Optional(
 		Type.String({ description: "Optional extra context or instructions shown under the question." }),
 	),
 	options: Type.Array(OptionSchema, {
 		description:
-			"The answer options (2 or more). Options only — there is no free-text mode. Give each option a stable `value`; you reference the correct one by that value in correctAnswer.",
-		minItems: 2,
+			"The answer options (4 to 8; aim for 6 by default). Use another count only when better suited to the question, without adding filler. Options only — there is no free-text mode. Give each option a stable `value`; you reference the correct one by that value in correctAnswer.",
+		minItems: 4,
+		maxItems: 8,
 	}),
 	multiSelect: Type.Optional(
 		Type.Boolean({ description: "Set to true when more than one option is correct and the user must select all of them." }),
@@ -112,43 +120,7 @@ const QuizParams = Type.Object({
 		description:
 			"REQUIRED. Explanation revealed AFTER the user answers (shown whether they got it right or wrong). Use it to reinforce why the correct answer is correct.",
 	}),
-	shuffle: Type.Optional(
-		Type.Boolean({
-			description:
-				"Defaults to true: options are randomly reordered before display so the correct answer isn't always in the same position. Set to false only when option order is meaningful (e.g. ordered numeric values, or an 'All/None of the above' option that must stay last).",
-		}),
-	),
 });
-
-function normalizeOptions(
-	options: Array<{ label: string; value?: string; description?: string }> | undefined,
-): QuizOption[] {
-	const seen = new Set<string>();
-	return (options || [])
-		.map((option) => ({
-			label: option.label.trim(),
-			value: option.value?.trim() || option.label.trim(),
-			description: option.description?.trim() || undefined,
-		}))
-		.filter((option) => {
-			if (option.label.length === 0) return false;
-			if (seen.has(option.value)) throw new Error(`duplicate option value "${option.value}"`);
-			seen.add(option.value);
-			return true;
-		});
-}
-
-// Fisher-Yates shuffle over a copy. Safe to reorder for display because
-// correctAnswer is keyed by value, not position — indices are resolved AFTER
-// shuffling, so grading always matches what the user actually sees.
-function shuffleOptions(options: QuizOption[]): QuizOption[] {
-	const out = [...options];
-	for (let i = out.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1));
-		[out[i], out[j]] = [out[j], out[i]];
-	}
-	return out;
-}
 
 // Resolve author-supplied option value(s) to 1-based indices. Keying by value
 // (not position) makes the correct answer self-documenting: the author writes
@@ -214,11 +186,62 @@ function addWrapped(lines: string[], text: string, width: number, indent = ""): 
 	}
 }
 
+function addWrappedWithPrefix(lines: string[], text: string, width: number, prefix: string, prefixWidth: number): void {
+	const continuationPrefix = " ".repeat(prefixWidth);
+	const contentWidth = Math.max(1, width - prefixWidth);
+	for (const [index, line] of wrapTextWithAnsi(text, contentWidth).entries()) {
+		lines.push(truncateToWidth(`${index === 0 ? prefix : continuationPrefix}${line}`, width));
+	}
+}
+
 function isCorrect(selectedIndices: number[], correctIndices: number[]): boolean {
 	if (selectedIndices.length !== correctIndices.length) return false;
 	const a = [...selectedIndices].sort((x, y) => x - y);
 	const b = [...correctIndices].sort((x, y) => x - y);
 	return a.every((v, i) => v === b[i]);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readLinkedQuizScratchpad(
+	ctx: { sessionManager: { getEntries(): unknown }; ui: { notify(message: string, level: "warning"): void } },
+	callId: string,
+): string | undefined {
+	let entries: unknown;
+	try {
+		entries = ctx.sessionManager.getEntries();
+	} catch (error) {
+		ctx.ui.notify(
+			`Quiz scratchpad could not read session history: ${error instanceof Error ? error.message : String(error)}`,
+			"warning",
+		);
+		return undefined;
+	}
+	if (!Array.isArray(entries)) {
+		ctx.ui.notify("Quiz scratchpad could not read session history: entries were not an array.", "warning");
+		return undefined;
+	}
+
+	let linkedFile: string | null = null;
+	for (const entry of entries) {
+		if (!isRecord(entry) || entry.type !== "custom" || entry.customType !== "md-log" || !isRecord(entry.data)) continue;
+		linkedFile = typeof entry.data.file === "string" && entry.data.file ? entry.data.file : null;
+	}
+	if (!linkedFile) return undefined;
+
+	let markdown: string;
+	try {
+		markdown = fs.readFileSync(linkedFile, "utf-8");
+	} catch (error) {
+		ctx.ui.notify(
+			`Quiz scratchpad could not read the linked md-log note: ${error instanceof Error ? error.message : String(error)}`,
+			"warning",
+		);
+		return undefined;
+	}
+	return extractQuizScratchpad(markdown, callId);
 }
 
 function buildStructuredResult(
@@ -233,9 +256,9 @@ function buildStructuredResult(
 	message?: string,
 	options?: DisplayedOption[],
 	dontKnow?: boolean,
-	note?: string,
+	scratchpad?: string,
 ): QuizResultDetails {
-	return { status, question, context, mode, answers, correctIndices, options, correct, dontKnow, note, explanation, message };
+	return { status, question, context, mode, answers, correctIndices, options, correct, dontKnow, scratchpad, explanation, message };
 }
 
 function cancelledResult(question: string, mode: QuizMode, correctIndices: number[], context?: string) {
@@ -259,6 +282,8 @@ function formatOptionRef(options: QuizOption[], index: number): string {
 }
 
 function buildResult(
+	interactionId: string,
+	conceptId: string | undefined,
 	question: string,
 	context: string | undefined,
 	mode: QuizMode,
@@ -266,8 +291,9 @@ function buildResult(
 	response: QuizResponse,
 	correctIndices: number[],
 	explanation: string | undefined,
+	scratchpad: string | undefined,
 ) {
-	const { dontKnow, note, answers } = response;
+	const { dontKnow, answers } = response;
 	const selectedIndices = answers.map((a) => a.index);
 	// "I don't know" is never counted as correct — it's a distinct outcome.
 	const correct = dontKnow ? false : isCorrect(selectedIndices, correctIndices);
@@ -280,31 +306,35 @@ function buildResult(
 		// is a genuine knowledge gap, not a wrong answer to correct against.
 		text = `User selected "I don't know" — they did not attempt an answer (a genuine knowledge gap, not a wrong guess).`;
 		text += `\nCorrect: ${correctStr}`;
-		if (note) text += `\nUser's note: ${note}`;
 	} else {
 		const verdict = correct ? "correctly" : "incorrectly";
 		const selectedStr = answers.map((a) => `${a.index}. ${a.label}`).join(", ");
 		text = `User answered ${verdict}.\nSelected: ${selectedStr}\nCorrect: ${correctStr}`;
-		if (note) text += `\nUser's note: ${note}`;
 	}
+	if (scratchpad) text += `\nLearner's scratchpad (user-authored):\n${scratchpad}`;
 	if (explanation) text += `\nExplanation: ${explanation}`;
+	text += `\n(interaction ${interactionId})`;
 
 	return {
 		content: [{ type: "text" as const, text }],
-		details: buildStructuredResult(
-			"answered",
-			question,
-			mode,
-			answers,
-			correctIndices,
-			correct,
-			explanation,
-			context,
-			undefined,
-			displayedOptions,
-			dontKnow,
-			note,
-		),
+		details: {
+			...buildStructuredResult(
+				"answered",
+				question,
+				mode,
+				answers,
+				correctIndices,
+				correct,
+				explanation,
+				context,
+				undefined,
+				displayedOptions,
+				dontKnow,
+				scratchpad,
+			),
+			interactionId,
+			conceptId,
+		},
 	};
 }
 
@@ -418,6 +448,10 @@ function makeNoteEditor(tui: any, theme: any): Editor {
 	return editor;
 }
 
+function isPrintableInput(data: string): boolean {
+	return data.length > 0 && data.charCodeAt(0) >= 32;
+}
+
 async function askSingleChoice(
 	ctx: any,
 	question: string,
@@ -433,14 +467,33 @@ async function askSingleChoice(
 	}));
 	const dontKnowNav = allOptions.length; // nav index of the "I don't know" row
 
+	let overlayHandle: OverlayHandle | undefined;
+	let cancelModal: (() => void) | undefined;
+	let snapshotModal: (() => string) | undefined;
 	return ctx.ui.custom<QuizResponse | null>(
 		(tui: any, theme: any, _kb: any, done: (result: QuizResponse | null) => void) => {
+			const finish = (result: QuizResponse | null) => {
+				clearAnswerModal(overlayHandle);
+				done(result);
+			};
 			let optionIndex = 0;
 			let phase: "select" | "feedback" = "select";
 			let focus: "options" | "note" = "options";
 			let chosen: OptionAnswer | null = null;
 			let dontKnow = false;
 			const editor = makeNoteEditor(tui, theme);
+			cancelModal = () => finish(null);
+			snapshotModal = () => JSON.stringify({
+				kind: "single-choice-quiz",
+				question,
+				context,
+				options: allOptions.map(({ label, value }) => ({ label, value })),
+				phase,
+				highlightedOption: optionIndex === dontKnowNav ? DONT_KNOW_LABEL : allOptions[optionIndex]?.label,
+				answer: chosen ? { label: chosen.label, value: chosen.value } : dontKnow ? DONT_KNOW_LABEL : undefined,
+				note: noteText(),
+				focus,
+			});
 			let cachedLines: string[] | undefined;
 			let cachedWidth = -1;
 
@@ -468,9 +521,15 @@ async function askSingleChoice(
 			}
 
 			function handleInput(data: string) {
+				if (matchesKey(data, "f6")) {
+					if (suspendAnswerModal(overlayHandle)) {
+						ctx.ui.notify("Answer paused. Press F6 again to stash the editor draft, run your command, then use /answer-resume.", "info");
+					}
+					return;
+				}
 				if (phase === "feedback") {
 					if (matchesKey(data, Key.enter) || matchesKey(data, Key.escape)) {
-						done(response());
+						finish(response());
 					}
 					return;
 				}
@@ -492,7 +551,7 @@ async function askSingleChoice(
 						return;
 					}
 					editor.handleInput(data);
-					tui.requestRender();
+					refresh();
 					return;
 				}
 
@@ -521,7 +580,14 @@ async function askSingleChoice(
 					return;
 				}
 				if (matchesKey(data, Key.escape)) {
-					done(null);
+					finish(null);
+					return;
+				}
+				if (isPrintableInput(data)) {
+					focus = "note";
+					editor.focused = true;
+					editor.handleInput(data);
+					refresh();
 				}
 			}
 
@@ -548,6 +614,7 @@ async function askSingleChoice(
 						dontKnow,
 						noteText(),
 					);
+					add(theme.fg("dim", " F6 pause • press again for Interlude • /answer-resume return"));
 					add(theme.fg("accent", "─".repeat(width)));
 					cachedLines = lines;
 					cachedWidth = width;
@@ -575,7 +642,7 @@ async function askSingleChoice(
 				if (focus === "note") {
 					add(theme.fg("dim", " Type note • Ctrl+J newline • Enter back to options • Tab options • Esc back"));
 				} else {
-					add(theme.fg("dim", " ↑↓ navigate • Enter answer • Tab note • Esc cancel"));
+					add(theme.fg("dim", " ↑↓ navigate • Enter answer • type note/Tab • F6 pause • Esc cancel"));
 				}
 				add(theme.fg("accent", "─".repeat(width)));
 				// Not cached when the note is focused: the editor renders a live cursor.
@@ -594,6 +661,14 @@ async function askSingleChoice(
 				},
 				handleInput,
 			};
+		},
+		{
+			overlay: true,
+			overlayOptions: { anchor: "bottom-center" },
+			onHandle(handle) {
+				overlayHandle = handle;
+				trackAnswerModal(handle, { cancel: cancelModal, snapshot: snapshotModal });
+			},
 		},
 	);
 }
@@ -621,8 +696,15 @@ async function askMultiChoice(
 	const submitItem: DisplayOption = { id: "submit", label: "Submit", value: "__submit__", index: -1, isSubmit: true };
 	const allItems: DisplayOption[] = [...choiceItems, dontKnowItem, submitItem];
 
+	let overlayHandle: OverlayHandle | undefined;
+	let cancelModal: (() => void) | undefined;
+	let snapshotModal: (() => string) | undefined;
 	return ctx.ui.custom<QuizResponse | null>(
 		(tui: any, theme: any, _kb: any, done: (result: QuizResponse | null) => void) => {
+			const finish = (result: QuizResponse | null) => {
+				clearAnswerModal(overlayHandle);
+				done(result);
+			};
 			let optionIndex = 0;
 			let phase: "select" | "feedback" = "select";
 			let focus: "options" | "note" = "options";
@@ -630,6 +712,19 @@ async function askMultiChoice(
 			let cachedLines: string[] | undefined;
 			let cachedWidth = -1;
 			const selected = new Map<string, OptionAnswer>();
+			cancelModal = () => finish(null);
+			snapshotModal = () => JSON.stringify({
+				kind: "multi-choice-quiz",
+				question,
+				context,
+				options: options.map(({ label, value }) => ({ label, value })),
+				selected: Array.from(selected.values(), ({ label, value }) => ({ label, value })),
+				dontKnow: selected.has(DONT_KNOW_ID),
+				phase,
+				highlightedOption: allItems[optionIndex]?.label,
+				note: noteText(),
+				focus,
+			});
 
 			function refresh() {
 				cachedLines = undefined;
@@ -686,9 +781,15 @@ async function askMultiChoice(
 			}
 
 			function handleInput(data: string) {
+				if (matchesKey(data, "f6")) {
+					if (suspendAnswerModal(overlayHandle)) {
+						ctx.ui.notify("Answer paused. Press F6 again to stash the editor draft, run your command, then use /answer-resume.", "info");
+					}
+					return;
+				}
 				if (phase === "feedback") {
 					if (matchesKey(data, Key.enter) || matchesKey(data, Key.escape)) {
-						done(response());
+						finish(response());
 					}
 					return;
 				}
@@ -710,7 +811,7 @@ async function askMultiChoice(
 						return;
 					}
 					editor.handleInput(data);
-					tui.requestRender();
+					refresh();
 					return;
 				}
 
@@ -743,7 +844,14 @@ async function askMultiChoice(
 				}
 
 				if (matchesKey(data, Key.escape)) {
-					done(null);
+					finish(null);
+					return;
+				}
+				if (isPrintableInput(data)) {
+					focus = "note";
+					editor.focused = true;
+					editor.handleInput(data);
+					refresh();
 				}
 			}
 
@@ -770,6 +878,7 @@ async function askMultiChoice(
 						choseDontKnow(),
 						noteText(),
 					);
+					add(theme.fg("dim", " F6 pause • press again for Interlude • /answer-resume return"));
 					add(theme.fg("accent", "─".repeat(width)));
 					cachedLines = lines;
 					cachedWidth = width;
@@ -796,7 +905,7 @@ async function askMultiChoice(
 						const checked = selected.has(item.id);
 						const label = `${checked ? "[x]" : "[ ]"} ${item.label}`;
 						const styled = isFocused ? theme.fg("accent", label) : theme.fg(checked ? "warning" : "dim", label);
-						add(`${prefix}${styled}`);
+						addWrappedWithPrefix(lines, styled, width, prefix, 2);
 						continue;
 					}
 
@@ -804,7 +913,7 @@ async function askMultiChoice(
 					const marker = checked ? "[x]" : "[ ]";
 					const label = `${marker} ${item.index}. ${item.label}`;
 					const styled = isFocused ? theme.fg("accent", label) : theme.fg(checked ? "success" : "text", label);
-					add(`${prefix}${styled}`);
+					addWrappedWithPrefix(lines, styled, width, prefix, 2);
 					if (item.description) {
 						addWrapped(lines, theme.fg("muted", item.description), width, "     ");
 					}
@@ -819,7 +928,7 @@ async function askMultiChoice(
 				if (focus === "note") {
 					add(theme.fg("dim", " Type note • Ctrl+J newline • Enter back to options • Tab options • Esc back"));
 				} else {
-					add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter submit • Tab note • Esc cancel"));
+					add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter submit • type note/Tab • F6 pause • Esc cancel"));
 				}
 				add(theme.fg("accent", "─".repeat(width)));
 				// Not cached when the note is focused: the editor renders a live cursor.
@@ -838,6 +947,14 @@ async function askMultiChoice(
 				},
 				handleInput,
 			};
+		},
+		{
+			overlay: true,
+			overlayOptions: { anchor: "bottom-center" },
+			onHandle(handle) {
+				overlayHandle = handle;
+				trackAnswerModal(handle, { cancel: cancelModal, snapshot: snapshotModal });
+			},
 		},
 	);
 }
@@ -878,23 +995,25 @@ export default function quiz(pi: ExtensionAPI) {
 		name: "quiz",
 		label: "quiz",
 		description:
-			"Ask the user a GRADED question with a known correct answer, then instantly grade and give feedback. Unlike ask_user_question (which collects preferences/decisions with no right answer), quiz always has a correct answer supplied by you, marks the user's selection right/wrong (✓/✗), reveals the correct answer, and can show an explanation. Use it to (1) assess what the learner already understands before teaching, and (2) run tight practice/retrieval loops after explaining, or probe understanding whenever you're unsure they've got it. Options-only: single-select or multi-select, plus an automatic 'I don't know' choice so the user can signal a genuine gap instead of guessing. An always-present optional note field (Tab to focus it) lets the user attach a free-text note to ANY answer; it reaches you only when non-empty. No free-text answers — for non-graded questions use ask_user_question instead.",
+			"Ask the user a GRADED question with a known correct answer, then instantly grade and give feedback. Unlike ask_user_question (which collects preferences/decisions with no right answer), quiz always has a correct answer supplied by you, marks the user's selection right/wrong (✓/✗), reveals the correct answer, and can show an explanation. Use it to (1) assess what the learner already understands before teaching, and (2) run tight practice/retrieval loops after explaining, or probe understanding whenever you're unsure they've got it. Options-only: multi-choice or multi-select, plus an automatic 'I don't know' choice so the user can signal a genuine gap instead of guessing. An always-present optional note field (Tab to focus it) appends to the linked md-log scratchpad for ANY answer; the combined scratchpad reaches you as learner reasoning. No free-text answers — for non-graded questions use ask_user_question instead.",
 		promptSnippet:
 			"Use the quiz tool to test the user with a graded multiple-choice or multi-select question (required correct answer + required explanation). For non-graded questions, use ask_user_question.",
 		promptGuidelines: [
 			"quiz is GRADED; ask_user_question is not. If the question has a correct answer, use quiz. If you just need a preference, decision, or open-ended input, use ask_user_question.",
+			"For most quiz questions, include a concise 3-6 word summaryTitle for the md-log heading; omit it when a title would be repetitive or awkward.",
+			"When teaching a concept, include a stable `conceptId` on each graded quiz so attempts contribute to that concept's mastery history.",
 			'correctAnswer is REQUIRED and is the option value, not a position number. Single-select: one string (e.g. "mercury"). Multi-select: an array of strings (e.g. ["belize", "niue"]).',
 			"Always pass the option's `value` string as correctAnswer — it is self-checking and prevents miscounting positions. A value that matches no option is a hard error.",
 			"explanation is REQUIRED — always say why the correct answer is correct.",
 			"Multi-select is graded as an exact-set match: the user is correct only if they select every correct option and no incorrect ones.",
-			"There is no free-text mode. An 'I don't know' choice is ALWAYS added automatically — provide ONLY the real, gradable options (at least two). Never add your own uncertainty/opt-out option like 'I don't know', 'I'm not sure', or 'Not sure'; that is handled for you and a manual one would be redundant or gradable-as-wrong.",
+			"There is no free-text mode. An 'I don't know' choice is ALWAYS added automatically — provide ONLY 4 to 8 real, gradable options. Never add your own uncertainty/opt-out option like 'I don't know', 'I'm not sure', or 'Not sure'; that is handled for you and a manual one would be redundant or gradable-as-wrong.",
 			"If a result comes back as dontKnow, the user honestly did not know and did NOT guess — treat it as a genuine knowledge gap to teach into, not as a wrong answer.",
-			"Any answer (right, wrong, or 'I don't know') may carry an optional free-text `note` the user typed in the always-present note field. When present it reflects what they were thinking or unsure about — read it and let it steer your follow-up. It is omitted entirely when empty.",
+			"After an answer, a non-empty `scratchpad` is returned from the fenced block immediately after that question in the linked md-log. The optional note field is appended to any existing scratchpad text and included in this combined value; treat the whole scratchpad as the learner's reasoning and use it to adapt the next question. If absent, continue normally without asking for it.",
 			"Treat each wrong answer (distractor) as a diagnostic probe, not just filler: make it a specific, believable mistake the user might actually hold — a common misconception, or an adjacent/easily-confused concept — so that WHICH wrong answer they pick reveals WHICH nuance of their understanding is off. You learn far more from a targeted wrong choice than from a binary right/wrong, and the choice tells you exactly which gap to teach into next (and what the explanation should address).",
 			"Guardrail: every distractor must be unambiguously wrong on the intended reading — tempting, but a real error, not a defensible alternative. Don't drift into trick questions.",
 			"Anti-guessing hygiene: don't let the correct answer stand out by form (longest, most precise, most hedged, or the only one in the right format). Keep options similar in length, specificity, and phrasing so it can't be picked from shape alone.",
 			"Set multiSelect: true only when more than one option is correct.",
-			"Options are shuffled before display by default, so don't worry about which position you list the correct answer in. Set shuffle: false only when option order is meaningful (ordered values, or an 'All/None of the above' option that must stay last).",
+			"Use 6 real answer options by default. Choose 4–8 only when the question's complexity and useful distractors make a different count clearly better; never pad with filler. The tool automatically randomizes option order before display, so use stable values and never depend on positions.",
 			"To probe nuance, ask several quick quiz questions and adapt each one based on the previous answers, rather than writing one giant question.",
 			"Don't leak the answer through formatting: keep option phrasing/length even and don't hint which is correct.",
 			"For explanations and tutoring prose, use Obsidian 1.14+ color highlights sparingly and consistently: ==🟢...== for correct answers/key takeaways, ==🔴...== for misconceptions/incorrect claims, ==🟡...== for cautions or important caveats, ==🔵...== for definitions/context, ==🟣...== for relationships/connections, and ==🟠...== for actions/next steps. Highlight only the shortest useful phrase or sentence; never mark an option before the user answers.",
@@ -908,16 +1027,12 @@ export default function quiz(pi: ExtensionAPI) {
 
 			let options: QuizOption[];
 			try {
-				options = normalizeOptions(params.options);
+				options = normalizeQuizOptions(params.options);
 			} catch (e) {
 				return unavailableResult(params.question, mode, `quiz ${(e as Error).message}`, [], context);
 			}
 
-			// Shuffle for display (default on) BEFORE resolving correct indices, so
-			// grading matches the order the user sees.
-			if (params.shuffle !== false) {
-				options = shuffleOptions(options);
-			}
+			options = shuffleQuizOptions(options);
 
 			// Emit the true (post-shuffle) display order immediately, before the UI
 			// blocks on the user's answer. Listeners such as md-log rely on this to
@@ -939,16 +1054,6 @@ export default function quiz(pi: ExtensionAPI) {
 				return cancelledResult(params.question, mode, correctIndices, context);
 			}
 
-			if (options.length < 2) {
-				return unavailableResult(
-					params.question,
-					mode,
-					"quiz requires at least two options",
-					correctIndices,
-					context,
-				);
-			}
-
 			if (correctError) {
 				return unavailableResult(params.question, mode, `quiz ${correctError}`, correctIndices, context);
 			}
@@ -965,7 +1070,19 @@ export default function quiz(pi: ExtensionAPI) {
 				if (!response) {
 					return cancelledResult(params.question, mode, correctIndices, context);
 				}
-				return buildResult(params.question, context, mode, options, response, correctIndices, explanation);
+				const scratchpad = appendQuizScratchpad(readLinkedQuizScratchpad(ctx, _toolCallId), response.note);
+				return buildResult(
+					_toolCallId,
+					params.conceptId?.trim() || undefined,
+					params.question,
+					context,
+					mode,
+					options,
+					response,
+					correctIndices,
+					explanation,
+					scratchpad,
+				);
 			});
 		},
 
@@ -976,9 +1093,7 @@ export default function quiz(pi: ExtensionAPI) {
 			// order shown during streaming would be stale/misleading. The full option
 			// list is rendered — in its true display order — by renderResult after the
 			// user answers.
-			const options = normalizeOptions(
-				args.options as Array<{ label: string; value?: string; description?: string }> | undefined,
-			);
+			const options = Array.isArray(args.options) ? args.options : [];
 			let text = theme.fg("toolTitle", theme.bold("quiz ")) + theme.fg("muted", args.question);
 			if (args.multiSelect) {
 				text += theme.fg("dim", " [multi-select]");

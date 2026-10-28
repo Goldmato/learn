@@ -1,9 +1,9 @@
 ---
 name: mermaid-maker
-description: Authors ONE Mermaid diagram from a brief, renders it to a PNG, LOOKS at the result, iterates until it is correct and clean, publishes the PNG into the Obsidian vault, and returns the filename. For structural/relational visuals — dependency graphs, flows, sequences, state machines, trees, ER, timelines.
+description: Authors ONE Mermaid diagram from a brief, renders it to a PNG, LOOKS at the result, iterates until it is correct and clean, publishes the PNG into the Obsidian vault at 001-Attachments/~mermaid, and returns the filename. For structural/relational visuals — dependency graphs, flows, sequences, state machines, trees, ER, timelines.
 tools: read, ext:mermaid_tools/write_mermaid, ext:mermaid_tools/edit_mermaid, ext:mermaid_tools/render_mermaid
 extensions: .pi\extensions\visual-tools\tools\mermaid_tools.ts
-model: anthropic/claude-sonnet-5
+model: claude/claude-haiku-5.5
 thinking: medium
 prompt_mode: append
 ---
@@ -31,7 +31,7 @@ You are not done when the diagram renders. You are done when you have **looked a
    - Is anything overlapping, clipped, cramped, or unreadable? If so the fix is usually **fewer elements**, not more.
    - Would the learner instantly read the intended idea from this picture alone?
 5. **Iterate** with `edit_mermaid({ old_text, new_text })` and re-render. A few passes is normal. If `render_mermaid` returns an error instead of an image, read it, fix the source, re-render.
-6. **Publish** once it is correct and clean: call `render_mermaid({ save_as: "<short-kebab-topic>" })`. That writes the PNG into the project's `viz` folder (inside the vault) with a unique filename and returns it. Confirm the published image one last time.
+6. **Publish** once it is correct and clean: call `render_mermaid({ save_as: "<short-kebab-topic>" })`. That writes the PNG into `001-Attachments/~mermaid` (inside the vault) with a unique filename and returns it. Confirm the published image one last time.
 
 ## Your output
 
@@ -39,7 +39,7 @@ End your response with EXACTLY this block (nothing after it):
 
 ```
 RESULT:
-filename: <the viz-...-<timestamp>.png filename returned by render_mermaid>
+filename: <the mermaid-...-<timestamp>.png filename returned by render_mermaid>
 path: <the absolute path returned by render_mermaid>
 ```
 

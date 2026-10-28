@@ -1,0 +1,353 @@
+{
+  "version": 1,
+  "id": "20261027-065146Z-226d41",
+  "state": "completed",
+  "createdAt": "2026-10-27T06:51:46.945Z",
+  "updatedAt": "2026-10-27T06:52:39.405Z",
+  "backend": {
+    "id": "default",
+    "url": "http://127.0.0.1:8188"
+  },
+  "clientId": "pi-paint-t6kla051",
+  "workflow": "MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\comfyui_workflows\\MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowHash": "177243ae35f7662c7175639f20a253d3ad7b50360a8571ccf4105f65d6010178",
+  "workflowSnapshotPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-065146Z-226d41\\workflow.json",
+  "outputDir": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-065146Z-226d41\\outputs",
+  "outputNodeIds": [
+    "9"
+  ],
+  "outputPrefix": "paint/20261027-065146Z-226d41",
+  "prompt": "Friendly, accurate educational infographic for a beginner biology lesson showing a bird's digestive system. A simple side-view bird illustration, facing left, drawn in a clean flat style with a beak and no teeth. A clear curved arrowed food pathway runs from the beak through the body, with arrows showing the direction food travels. Organs are shown in soft, distinct colors inside the bird silhouette: beak/mouth, esophagus, crop, proventriculus, gizzard, small intestine, large intestine, and cloaca. Each organ has a clean, readable label with a short role caption beneath it. Warm natural color palette of terracotta, sage green, cream, golden ochre, and soft brown on an off-white parchment background. Uncluttered layout, generous spacing, simple icon-like shapes, crisp sans-serif typography, title across the top.",
+  "negativePrompt": "teeth, human, photorealistic, dark background, cluttered, busy, overlapping labels, misspelled text, extra unlabeled organs, gibberish text, watermark, blurry, distorted anatomy",
+  "variables": {
+    "PositivePrompt": [
+      "",
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      "",
+      [
+        "34",
+        2
+      ]
+    ],
+    "BoundingBoxes": [
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1296,
+            "height": 736,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          },
+          {
+            "x": 65,
+            "y": 22,
+            "width": 1166,
+            "height": 74,
+            "metadata": {
+              "type": "text",
+              "text": "How a Bird Digests Food",
+              "desc": "Title across the top",
+              "palette": []
+            }
+          },
+          {
+            "x": 26,
+            "y": 162,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Beak / Mouth: takes in food",
+              "desc": "Left column label, top",
+              "palette": []
+            }
+          },
+          {
+            "x": 26,
+            "y": 272,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Esophagus: carries food down the neck",
+              "desc": "Left column label, middle",
+              "palette": []
+            }
+          },
+          {
+            "x": 26,
+            "y": 383,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Crop: temporary food storage",
+              "desc": "Left column label, lower",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 162,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Proventriculus: chemical digestion",
+              "desc": "Right column label, top",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 272,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Gizzard: muscular grinding",
+              "desc": "Right column label, second",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 383,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Small intestine: nutrient absorption",
+              "desc": "Right column label, third",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 493,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Large intestine: water absorption",
+              "desc": "Right column label, fourth",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 604,
+            "width": 259,
+            "height": 58,
+            "metadata": {
+              "type": "text",
+              "text": "Cloaca: exit point for waste",
+              "desc": "Right column label, bottom",
+              "palette": []
+            }
+          }
+        ]
+      },
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1296,
+            "height": 736,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          },
+          {
+            "x": 65,
+            "y": 22,
+            "width": 1166,
+            "height": 74,
+            "metadata": {
+              "type": "text",
+              "text": "How a Bird Digests Food",
+              "desc": "Title across the top",
+              "palette": []
+            }
+          },
+          {
+            "x": 26,
+            "y": 162,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Beak / Mouth: takes in food",
+              "desc": "Left column label, top",
+              "palette": []
+            }
+          },
+          {
+            "x": 26,
+            "y": 272,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Esophagus: carries food down the neck",
+              "desc": "Left column label, middle",
+              "palette": []
+            }
+          },
+          {
+            "x": 26,
+            "y": 383,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Crop: temporary food storage",
+              "desc": "Left column label, lower",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 162,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Proventriculus: chemical digestion",
+              "desc": "Right column label, top",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 272,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Gizzard: muscular grinding",
+              "desc": "Right column label, second",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 383,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Small intestine: nutrient absorption",
+              "desc": "Right column label, third",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 493,
+            "width": 259,
+            "height": 59,
+            "metadata": {
+              "type": "text",
+              "text": "Large intestine: water absorption",
+              "desc": "Right column label, fourth",
+              "palette": []
+            }
+          },
+          {
+            "x": 1011,
+            "y": 604,
+            "width": 259,
+            "height": 58,
+            "metadata": {
+              "type": "text",
+              "text": "Cloaca: exit point for waste",
+              "desc": "Right column label, bottom",
+              "palette": []
+            }
+          }
+        ]
+      }
+    ],
+    "Resolution": [
+      "16:9 (Widescreen)",
+      0.9,
+      16
+    ]
+  },
+  "sourceInputPaths": [],
+  "uploadedInputs": [],
+  "appliedLoras": [],
+  "warnings": [],
+  "files": [
+    {
+      "path": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-065146Z-226d41\\outputs\\paint_0.png",
+      "filename": "paint_0.png",
+      "mimeType": "image/png"
+    }
+  ],
+  "terminalAt": "2026-10-27T06:52:39.405Z",
+  "promptId": "a64f1e55-2fb6-4cf9-a9e1-15e716f75428",
+  "submittedAt": "2026-10-27T06:51:46.956Z",
+  "outputManifest": {
+    "9": {
+      "images": [
+        {
+          "filename": "moss_image_00001_.png",
+          "subfolder": "paint\\20261027-065146Z-226d41",
+          "type": "output",
+          "metadata": {
+            "kind": "image",
+            "width": 1296,
+            "height": 736
+          },
+          "id": "be2e5a5e-3960-4a7a-bb58-ba4ae977a274"
+        }
+      ]
+    },
+    "34": {
+      "dims": [
+        1296,
+        736
+      ]
+    },
+    "37": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Friendly, accurate educational infographic for a beginner biology lesson showing a bird's digestive system. A simple side-view bird illustration, facing left, drawn in a clean flat style with a beak and no teeth. A clear curved arrowed food pathway runs from the beak through the body, with arrows showing the direction food travels. Organs are shown in soft, distinct colors inside the bird silhouette: beak/mouth, esophagus, crop, proventriculus, gizzard, small intestine, large intestine, and cloaca. Each organ has a clean, readable label with a short role caption beneath it. Warm natural color palette of terracotta, sage green, cream, golden ochre, and soft brown on an off-white parchment background. Uncluttered layout, generous spacing, simple icon-like shapes, crisp sans-serif typography, title across the top.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-368,-648,368,648]},{\"label\":\"text\",\"caption\":\"Title across the top\",\"text\":\"How a Bird Digests Food\",\"bbox\":[-346,-584,-272,584]},{\"label\":\"text\",\"caption\":\"Left column label, top\",\"text\":\"Beak / Mouth: takes in food\",\"bbox\":[-207,-623,-147,-362]},{\"label\":\"text\",\"caption\":\"Left column label, middle\",\"text\":\"Esophagus: carries food down the neck\",\"bbox\":[-96,-623,-36,-362]},{\"label\":\"text\",\"caption\":\"Left column label, lower\",\"text\":\"Crop: temporary food storage\",\"bbox\":[14,-623,75,-362]},{\"label\":\"text\",\"caption\":\"Right column label, top\",\"text\":\"Proventriculus: chemical digestion\",\"bbox\":[-207,362,-147,623]},{\"label\":\"text\",\"caption\":\"Right column label, second\",\"text\":\"Gizzard: muscular grinding\",\"bbox\":[-96,362,-36,623]},{\"label\":\"text\",\"caption\":\"Right column label, third\",\"text\":\"Small intestine: nutrient absorption\",\"bbox\":[14,362,75,623]},{\"label\":\"text\",\"caption\":\"Right column label, fourth\",\"text\":\"Large intestine: water absorption\",\"bbox\":[125,362,184,623]},{\"label\":\"text\",\"caption\":\"Right column label, bottom\",\"text\":\"Cloaca: exit point for waste\",\"bbox\":[236,362,294,623]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    },
+    "18:13": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Friendly, accurate educational infographic for a beginner biology lesson showing a bird's digestive system. A simple side-view bird illustration, facing left, drawn in a clean flat style with a beak and no teeth. A clear curved arrowed food pathway runs from the beak through the body, with arrows showing the direction food travels. Organs are shown in soft, distinct colors inside the bird silhouette: beak/mouth, esophagus, crop, proventriculus, gizzard, small intestine, large intestine, and cloaca. Each organ has a clean, readable label with a short role caption beneath it. Warm natural color palette of terracotta, sage green, cream, golden ochre, and soft brown on an off-white parchment background. Uncluttered layout, generous spacing, simple icon-like shapes, crisp sans-serif typography, title across the top.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-368,-648,368,648]},{\"label\":\"text\",\"caption\":\"Title across the top\",\"text\":\"How a Bird Digests Food\",\"bbox\":[-346,-584,-272,584]},{\"label\":\"text\",\"caption\":\"Left column label, top\",\"text\":\"Beak / Mouth: takes in food\",\"bbox\":[-207,-623,-147,-362]},{\"label\":\"text\",\"caption\":\"Left column label, middle\",\"text\":\"Esophagus: carries food down the neck\",\"bbox\":[-96,-623,-36,-362]},{\"label\":\"text\",\"caption\":\"Left column label, lower\",\"text\":\"Crop: temporary food storage\",\"bbox\":[14,-623,75,-362]},{\"label\":\"text\",\"caption\":\"Right column label, top\",\"text\":\"Proventriculus: chemical digestion\",\"bbox\":[-207,362,-147,623]},{\"label\":\"text\",\"caption\":\"Right column label, second\",\"text\":\"Gizzard: muscular grinding\",\"bbox\":[-96,362,-36,623]},{\"label\":\"text\",\"caption\":\"Right column label, third\",\"text\":\"Small intestine: nutrient absorption\",\"bbox\":[14,362,75,623]},{\"label\":\"text\",\"caption\":\"Right column label, fourth\",\"text\":\"Large intestine: water absorption\",\"bbox\":[125,362,184,623]},{\"label\":\"text\",\"caption\":\"Right column label, bottom\",\"text\":\"Cloaca: exit point for waste\",\"bbox\":[236,362,294,623]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    }
+  },
+  "completedAt": "2026-10-27T06:52:39.405Z",
+  "generationElapsedMs": 52449
+}

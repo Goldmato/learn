@@ -1,0 +1,376 @@
+{
+  "version": 1,
+  "id": "20261027-054639Z-716459",
+  "state": "completed",
+  "createdAt": "2026-10-27T05:46:39.968Z",
+  "updatedAt": "2026-10-27T05:47:53.955Z",
+  "backend": {
+    "id": "default",
+    "url": "http://127.0.0.1:8188"
+  },
+  "clientId": "pi-paint-6t6vabbg",
+  "workflow": "MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\comfyui_workflows\\MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowHash": "07a4dda8ee71fe33099b7802742aa9932c0f6e012faafbcc8d42a3c7d5debcbb",
+  "workflowSnapshotPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-054639Z-716459\\workflow.json",
+  "outputDir": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-054639Z-716459\\outputs",
+  "outputNodeIds": [
+    "9"
+  ],
+  "outputPrefix": "paint/20261027-054639Z-716459",
+  "prompt": "Create a visually coherent, highly detailed abstract semi-translucent 2.5D crystalline celestial machine: a dense layered botanical-mechanical structure combining a luminous glass orrery, branching crystal vines, orbital rings, faceted leaves, tiny floating prisms, suspended droplets, delicate filigree, and glowing nodes. Rich overlapping transparent geometric forms, subtle refraction, intricate fine details, luminous teal, violet, rose-gold and icy blue gradients, dramatic depth, polished editorial concept-art composition on a dark indigo background. Deliberately organize it as many tightly coordinated, distinct spatial components across the canvas, with clear separations and layered overlaps suitable for numerous bounding-box regions. No text, no labels, no lettering.",
+  "variables": {
+    "PositivePrompt": [
+      "",
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      "",
+      [
+        "34",
+        2
+      ]
+    ],
+    "BoundingBoxes": [
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1312,
+            "height": 880,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Dark indigo atmospheric background with faint luminous dust and subtle gradient",
+              "palette": []
+            }
+          },
+          {
+            "x": 446,
+            "y": 211,
+            "width": 420,
+            "height": 423,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Central luminous glass celestial mechanism and faceted core",
+              "palette": []
+            }
+          },
+          {
+            "x": 354,
+            "y": 141,
+            "width": 604,
+            "height": 598,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Large tilted translucent orbital ring encircling central machine",
+              "palette": []
+            }
+          },
+          {
+            "x": 131,
+            "y": 220,
+            "width": 354,
+            "height": 440,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Branching crystalline botanical vine on left with glass leaves",
+              "palette": []
+            }
+          },
+          {
+            "x": 840,
+            "y": 176,
+            "width": 341,
+            "height": 466,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Branching crystalline botanical vine on right with faceted leaves",
+              "palette": []
+            }
+          },
+          {
+            "x": 485,
+            "y": 70,
+            "width": 315,
+            "height": 203,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Upper crown of delicate crystal fronds and tiny glowing nodes",
+              "palette": []
+            }
+          },
+          {
+            "x": 512,
+            "y": 581,
+            "width": 288,
+            "height": 193,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Lower cluster of overlapping translucent prisms and glass petals",
+              "palette": []
+            }
+          },
+          {
+            "x": 105,
+            "y": 106,
+            "width": 262,
+            "height": 193,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Floating constellation of small transparent geometric crystals at upper left",
+              "palette": []
+            }
+          },
+          {
+            "x": 945,
+            "y": 106,
+            "width": 262,
+            "height": 202,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Floating constellation of small transparent geometric crystals at upper right",
+              "palette": []
+            }
+          },
+          {
+            "x": 144,
+            "y": 590,
+            "width": 289,
+            "height": 176,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Cluster of suspended glowing droplets and fine filigree at lower left",
+              "palette": []
+            }
+          },
+          {
+            "x": 892,
+            "y": 598,
+            "width": 302,
+            "height": 176,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Cluster of suspended glowing droplets and fine filigree at lower right",
+              "palette": []
+            }
+          }
+        ]
+      },
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1312,
+            "height": 880,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Dark indigo atmospheric background with faint luminous dust and subtle gradient",
+              "palette": []
+            }
+          },
+          {
+            "x": 446,
+            "y": 211,
+            "width": 420,
+            "height": 423,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Central luminous glass celestial mechanism and faceted core",
+              "palette": []
+            }
+          },
+          {
+            "x": 354,
+            "y": 141,
+            "width": 604,
+            "height": 598,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Large tilted translucent orbital ring encircling central machine",
+              "palette": []
+            }
+          },
+          {
+            "x": 131,
+            "y": 220,
+            "width": 354,
+            "height": 440,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Branching crystalline botanical vine on left with glass leaves",
+              "palette": []
+            }
+          },
+          {
+            "x": 840,
+            "y": 176,
+            "width": 341,
+            "height": 466,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Branching crystalline botanical vine on right with faceted leaves",
+              "palette": []
+            }
+          },
+          {
+            "x": 485,
+            "y": 70,
+            "width": 315,
+            "height": 203,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Upper crown of delicate crystal fronds and tiny glowing nodes",
+              "palette": []
+            }
+          },
+          {
+            "x": 512,
+            "y": 581,
+            "width": 288,
+            "height": 193,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Lower cluster of overlapping translucent prisms and glass petals",
+              "palette": []
+            }
+          },
+          {
+            "x": 105,
+            "y": 106,
+            "width": 262,
+            "height": 193,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Floating constellation of small transparent geometric crystals at upper left",
+              "palette": []
+            }
+          },
+          {
+            "x": 945,
+            "y": 106,
+            "width": 262,
+            "height": 202,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Floating constellation of small transparent geometric crystals at upper right",
+              "palette": []
+            }
+          },
+          {
+            "x": 144,
+            "y": 590,
+            "width": 289,
+            "height": 176,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Cluster of suspended glowing droplets and fine filigree at lower left",
+              "palette": []
+            }
+          },
+          {
+            "x": 892,
+            "y": 598,
+            "width": 302,
+            "height": 176,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Cluster of suspended glowing droplets and fine filigree at lower right",
+              "palette": []
+            }
+          }
+        ]
+      }
+    ],
+    "Resolution": [
+      "3:2 (Photo)",
+      1.1,
+      16
+    ]
+  },
+  "sourceInputPaths": [],
+  "uploadedInputs": [],
+  "appliedLoras": [],
+  "warnings": [],
+  "files": [
+    {
+      "path": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-054639Z-716459\\outputs\\paint_0.png",
+      "filename": "paint_0.png",
+      "mimeType": "image/png"
+    }
+  ],
+  "terminalAt": "2026-10-27T05:47:53.954Z",
+  "promptId": "871e3a4a-70e6-4554-b5dc-75996aa8566d",
+  "submittedAt": "2026-10-27T05:46:39.992Z",
+  "outputManifest": {
+    "9": {
+      "images": [
+        {
+          "filename": "moss_image_00001_.png",
+          "subfolder": "paint\\20261027-054639Z-716459",
+          "type": "output",
+          "metadata": {
+            "kind": "image",
+            "width": 1312,
+            "height": 880
+          },
+          "id": "58a4e8e8-0115-432a-a41d-5f525037d2e6"
+        }
+      ]
+    },
+    "34": {
+      "dims": [
+        1312,
+        880
+      ]
+    },
+    "37": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Create a visually coherent, highly detailed abstract semi-translucent 2.5D crystalline celestial machine: a dense layered botanical-mechanical structure combining a luminous glass orrery, branching crystal vines, orbital rings, faceted leaves, tiny floating prisms, suspended droplets, delicate filigree, and glowing nodes. Rich overlapping transparent geometric forms, subtle refraction, intricate fine details, luminous teal, violet, rose-gold and icy blue gradients, dramatic depth, polished editorial concept-art composition on a dark indigo background. Deliberately organize it as many tightly coordinated, distinct spatial components across the canvas, with clear separations and layered overlaps suitable for numerous bounding-box regions. No text, no labels, no lettering.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Dark indigo atmospheric background with faint luminous dust and subtle gradient\",\"bbox\":[-440,-656,440,656]},{\"label\":\"object\",\"caption\":\"Central luminous glass celestial mechanism and faceted core\",\"bbox\":[-229,-210,194,210]},{\"label\":\"object\",\"caption\":\"Large tilted translucent orbital ring encircling central machine\",\"bbox\":[-300,-302,300,302]},{\"label\":\"object\",\"caption\":\"Branching crystalline botanical vine on left with glass leaves\",\"bbox\":[-220,-525,220,-170]},{\"label\":\"object\",\"caption\":\"Branching crystalline botanical vine on right with faceted leaves\",\"bbox\":[-264,183,203,525]},{\"label\":\"object\",\"caption\":\"Upper crown of delicate crystal fronds and tiny glowing nodes\",\"bbox\":[-370,-171,-167,145]},{\"label\":\"object\",\"caption\":\"Lower cluster of overlapping translucent prisms and glass petals\",\"bbox\":[140,-145,335,145]},{\"label\":\"object\",\"caption\":\"Floating constellation of small transparent geometric crystals at upper left\",\"bbox\":[-335,-552,-140,-288]},{\"label\":\"object\",\"caption\":\"Floating constellation of small transparent geometric crystals at upper right\",\"bbox\":[-335,288,-132,552]},{\"label\":\"object\",\"caption\":\"Cluster of suspended glowing droplets and fine filigree at lower left\",\"bbox\":[149,-512,326,-223]},{\"label\":\"object\",\"caption\":\"Cluster of suspended glowing droplets and fine filigree at lower right\",\"bbox\":[158,236,335,538]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    },
+    "18:13": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Create a visually coherent, highly detailed abstract semi-translucent 2.5D crystalline celestial machine: a dense layered botanical-mechanical structure combining a luminous glass orrery, branching crystal vines, orbital rings, faceted leaves, tiny floating prisms, suspended droplets, delicate filigree, and glowing nodes. Rich overlapping transparent geometric forms, subtle refraction, intricate fine details, luminous teal, violet, rose-gold and icy blue gradients, dramatic depth, polished editorial concept-art composition on a dark indigo background. Deliberately organize it as many tightly coordinated, distinct spatial components across the canvas, with clear separations and layered overlaps suitable for numerous bounding-box regions. No text, no labels, no lettering.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Dark indigo atmospheric background with faint luminous dust and subtle gradient\",\"bbox\":[-440,-656,440,656]},{\"label\":\"object\",\"caption\":\"Central luminous glass celestial mechanism and faceted core\",\"bbox\":[-229,-210,194,210]},{\"label\":\"object\",\"caption\":\"Large tilted translucent orbital ring encircling central machine\",\"bbox\":[-300,-302,300,302]},{\"label\":\"object\",\"caption\":\"Branching crystalline botanical vine on left with glass leaves\",\"bbox\":[-220,-525,220,-170]},{\"label\":\"object\",\"caption\":\"Branching crystalline botanical vine on right with faceted leaves\",\"bbox\":[-264,183,203,525]},{\"label\":\"object\",\"caption\":\"Upper crown of delicate crystal fronds and tiny glowing nodes\",\"bbox\":[-370,-171,-167,145]},{\"label\":\"object\",\"caption\":\"Lower cluster of overlapping translucent prisms and glass petals\",\"bbox\":[140,-145,335,145]},{\"label\":\"object\",\"caption\":\"Floating constellation of small transparent geometric crystals at upper left\",\"bbox\":[-335,-552,-140,-288]},{\"label\":\"object\",\"caption\":\"Floating constellation of small transparent geometric crystals at upper right\",\"bbox\":[-335,288,-132,552]},{\"label\":\"object\",\"caption\":\"Cluster of suspended glowing droplets and fine filigree at lower left\",\"bbox\":[149,-512,326,-223]},{\"label\":\"object\",\"caption\":\"Cluster of suspended glowing droplets and fine filigree at lower right\",\"bbox\":[158,236,335,538]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    }
+  },
+  "completedAt": "2026-10-27T05:47:53.954Z",
+  "generationElapsedMs": 73962
+}

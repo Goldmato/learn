@@ -6,7 +6,7 @@ import {
 	buildBackfill,
 	replaceManagedTranscript,
 	renderTranscript,
-} from "../extensions/md-log-format.ts";
+} from "../lib/md-log-format.ts";
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pi-md-log-smoke-"));
 const notePath = path.join(directory, "existing-note.md");

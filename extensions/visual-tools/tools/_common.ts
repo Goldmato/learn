@@ -1,8 +1,8 @@
 /**
  * Shared helpers for the visual-tools authoring loops (mermaid_tools.ts,
  * svg_tools.ts): a subprocess runner, a per-session managed source file, an
- * exact-match editor (pi-edit semantics), and publishing a chosen render into
- * <cwd>/viz with a unique filename.
+ * exact-match editor (pi-edit semantics), and publishing a chosen render with
+ * a unique filename.
  *
  * Each tool file keeps its OWN session state (importing the type/helpers here),
  * so mermaid and svg never share a source file.
@@ -10,26 +10,44 @@
 
 import { spawn } from "node:child_process"
 import { tmpdir } from "node:os"
-import { basename, dirname, join } from "node:path"
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { basename, delimiter, dirname, isAbsolute, join, relative, sep } from "node:path"
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs"
 
 // rsvg-convert lives under MacPorts (/opt/local/bin); magick/gs under
 // /usr/local/bin; Homebrew under /opt/homebrew/bin. Augment PATH so the child
 // pi process (which may have inherited a thin PATH) still resolves them.
-export const EXTRA_PATH = ["/opt/local/bin", "/usr/local/bin", "/opt/homebrew/bin"]
+export const EXTRA_PATH = process.platform === "win32"
+  ? []
+  : ["/opt/local/bin", "/usr/local/bin", "/opt/homebrew/bin"]
 
-// Transient session/preview files live under the OS temp dir (NOT the vault),
-// so only the PUBLISHED PNG ever lands inside the Obsidian vault (viz/).
+// Transient session/preview files live under the OS temp dir (NOT the vault).
+// Mermaid and SVG publish to their own 001-Attachments subfolders.
 export const STAGING_ROOT = join(tmpdir(), "pi-visual-tools")
 export const FILES_DIRNAME = "viz"
 
 export const CHROME_CANDIDATES = [
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
 ]
 
 export function findChrome(): string | undefined {
-  for (const c of CHROME_CANDIDATES) if (existsSync(c)) return c
+  const candidates = [
+    process.env.CHROME_PATH,
+    ...CHROME_CANDIDATES,
+    ...(process.platform === "win32"
+      ? [
+          process.env.ProgramFiles && join(process.env.ProgramFiles, "Google", "Chrome", "Application", "chrome.exe"),
+          process.env["ProgramFiles(x86)"] && join(process.env["ProgramFiles(x86)"], "Google", "Chrome", "Application", "chrome.exe"),
+          process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe"),
+          process.env.ProgramFiles && join(process.env.ProgramFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+          process.env["ProgramFiles(x86)"] && join(process.env["ProgramFiles(x86)"], "Microsoft", "Edge", "Application", "msedge.exe"),
+        ]
+      : []),
+  ]
+  for (const candidate of candidates) if (candidate && existsSync(candidate)) return candidate
   return undefined
 }
 
@@ -46,7 +64,7 @@ export function run(
   opts: { cwd: string; timeoutMs: number; env?: Record<string, string> },
 ): Promise<RunResult> {
   return new Promise((resolveRun) => {
-    const augmentedPath = [...EXTRA_PATH, process.env.PATH ?? ""].join(":")
+    const augmentedPath = [...EXTRA_PATH, process.env.PATH ?? ""].join(delimiter)
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       env: { ...process.env, ...(opts.env ?? {}), PATH: augmentedPath },
@@ -130,19 +148,50 @@ export function snippetAround(content: string, index: number, contextLines = 3):
   return out.join("\n")
 }
 
-/** Copy a rendered PNG into <cwd>/viz with a unique, slugified name. */
-export function publish(pngPath: string, slug: string): { filename: string; path: string } {
-  const filesDir = join(process.cwd(), FILES_DIRNAME)
-  mkdirSync(filesDir, { recursive: true })
+function ensureAttachmentSubfolder(subfolder: string): string {
+  if (!/^~[a-z0-9][a-z0-9-]*$/i.test(subfolder)) {
+    throw new Error(`Invalid attachment subfolder: ${subfolder}`)
+  }
+
+  const vaultRoot = realpathSync(process.cwd())
+  const attachmentsDir = join(vaultRoot, "001-Attachments")
+  const outputDir = join(attachmentsDir, subfolder)
+  for (const directory of [attachmentsDir, outputDir]) {
+    try {
+      mkdirSync(directory)
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error
+    }
+
+    const stat = lstatSync(directory)
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`SVG image destination must be a real directory: ${directory}`)
+    }
+    const realDirectory = realpathSync(directory)
+    const relativeDirectory = relative(vaultRoot, realDirectory)
+    if (!relativeDirectory || relativeDirectory === ".." || relativeDirectory.startsWith(`..${sep}`) || isAbsolute(relativeDirectory)) {
+      throw new Error(`SVG image destination escapes the vault: ${directory}`)
+    }
+  }
+  return outputDir
+}
+
+/** Copy a rendered PNG into <cwd>/viz, or an Obsidian attachment subfolder. */
+export function publish(pngPath: string, slug: string, attachmentSubfolder?: string): { filename: string; path: string } {
+  const filesDir = attachmentSubfolder
+    ? ensureAttachmentSubfolder(attachmentSubfolder)
+    : join(process.cwd(), FILES_DIRNAME)
+  if (!attachmentSubfolder) mkdirSync(filesDir, { recursive: true })
   const clean =
     slug
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "viz"
-  const filename = `viz-${clean}-${Date.now()}.png`
+  const prefix = attachmentSubfolder ? attachmentSubfolder.slice(1) : "viz"
+  const filename = `${prefix}-${clean}-${Date.now()}.png`
   const dest = join(filesDir, filename)
   copyFileSync(pngPath, dest)
   return { filename, path: dest }
 }
 
-export { basename, dirname, join, existsSync, mkdirSync, readFileSync, writeFileSync }
+export { basename, dirname, join, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync }

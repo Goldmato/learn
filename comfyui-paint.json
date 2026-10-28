@@ -1,0 +1,7 @@
+{
+  "url": "http://127.0.0.1:8188",
+  "workflowDir": ".pi/comfyui_workflows",
+  "outputDir": ".pi/paint-jobs",
+  "syncTimeoutSeconds": 600,
+  "inlineImageLimit": 0
+}

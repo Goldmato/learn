@@ -4,11 +4,13 @@ import {
 	type EditorTheme,
 	Key,
 	Text,
+	type OverlayHandle,
 	matchesKey,
 	truncateToWidth,
 	wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { clearAnswerModal, resumeAnswerModal, suspendAnswerModal, trackAnswerModal } from "../lib/answer-modal.ts";
 
 interface AskOption {
 	label: string;
@@ -72,6 +74,9 @@ const AskUserQuestionParams = Type.Object({
 	question: Type.String({
 		description: "The single question to ask the user. Ask exactly one question per tool call.",
 	}),
+	summaryTitle: Type.Optional(
+		Type.String({ description: "Optional concise 3-6 word summary used as the md-log question heading." }),
+	),
 	details: Type.Optional(
 		Type.String({
 			description: "Optional extra context or instructions shown under the question.",
@@ -200,6 +205,82 @@ function buildResult(question: string, context: string | undefined, mode: AskUse
 	};
 }
 
+async function askText(ctx: any, question: string, context?: string): Promise<string | undefined> {
+	let overlayHandle: OverlayHandle | undefined;
+	let cancelModal: (() => void) | undefined;
+	let snapshotModal: (() => string) | undefined;
+	return ctx.ui.custom<string | undefined>((tui: any, theme: any, _kb: any, done: (result: string | undefined) => void) => {
+		const editor = new Editor(tui, createEditorTheme(theme));
+		let cachedLines: string[] | undefined;
+		let cachedWidth = -1;
+
+		const finish = (result: string | undefined) => {
+			clearAnswerModal(overlayHandle);
+			done(result);
+		};
+		cancelModal = () => finish(undefined);
+		snapshotModal = () => JSON.stringify({
+			kind: "text-question",
+			question,
+			context,
+			draft: editor.getText(),
+		});
+		const invalidate = () => {
+			cachedLines = undefined;
+			tui.requestRender();
+		};
+
+		editor.onSubmit = (value) => finish(value);
+
+		function handleInput(data: string): void {
+			if (matchesKey(data, "f6")) {
+				if (suspendAnswerModal(overlayHandle)) {
+					ctx.ui.notify("Answer paused. Press F6 again to stash the editor draft, run your command, then use /answer-resume.", "info");
+				}
+				return;
+			}
+			if (matchesKey(data, Key.escape)) {
+				finish(undefined);
+				return;
+			}
+			editor.handleInput(data);
+			invalidate();
+		}
+
+		return {
+			render(width: number): string[] {
+				if (cachedLines && cachedWidth === width) return cachedLines;
+				const lines = [theme.fg("accent", "─".repeat(width))];
+				for (const line of wrapTextWithAnsi(theme.fg("text", question), width)) lines.push(truncateToWidth(line, width));
+				if (context) {
+					lines.push("");
+					for (const line of wrapTextWithAnsi(theme.fg("muted", context), width)) lines.push(truncateToWidth(line, width));
+				}
+				lines.push("");
+				lines.push(...editor.render(width));
+				lines.push("");
+				lines.push(theme.fg("dim", " Enter submit • Ctrl+J newline • Esc cancel • F6 pause (press again for Interlude)"));
+				lines.push(theme.fg("accent", "─".repeat(width)));
+				cachedLines = lines;
+				cachedWidth = width;
+				return lines;
+			},
+			invalidate() {
+				cachedLines = undefined;
+				editor.invalidate();
+			},
+			handleInput,
+		};
+	}, {
+		overlay: true,
+		overlayOptions: { anchor: "bottom-center" },
+		onHandle(handle) {
+			overlayHandle = handle;
+			trackAnswerModal(handle, { cancel: cancelModal, snapshot: snapshotModal });
+		},
+	});
+}
+
 async function askSingleChoice(
 	ctx: any,
 	question: string,
@@ -212,17 +293,34 @@ async function askSingleChoice(
 		{ id: "other", label: otherLabel, value: "__other__", isOther: true },
 	];
 
+	let overlayHandle: OverlayHandle | undefined;
+	let cancelModal: (() => void) | undefined;
+	let snapshotModal: (() => string) | undefined;
 	return ctx.ui.custom<AskAnswer | null>((tui: any, theme: any, _kb: any, done: (result: AskAnswer | null) => void) => {
+		const finish = (result: AskAnswer | null) => {
+			clearAnswerModal(overlayHandle);
+			done(result);
+		};
 		let optionIndex = 0;
 		let editMode = false;
 		let cachedLines: string[] | undefined;
 		let cachedWidth = -1;
 		const editor = new Editor(tui, createEditorTheme(theme));
+		cancelModal = () => finish(null);
+		snapshotModal = () => JSON.stringify({
+			kind: "single-choice-question",
+			question,
+			context,
+			options: allOptions.map(({ label, value }) => ({ label, value })),
+			highlightedOption: allOptions[optionIndex]?.label,
+			editMode,
+			draft: editMode ? editor.getText() : undefined,
+		});
 
 		editor.onSubmit = (value) => {
 			const trimmed = value.trim();
 			if (!trimmed) return;
-			done({ type: "other", label: trimmed, value: trimmed });
+			finish({ type: "other", label: trimmed, value: trimmed });
 		};
 
 		function refresh() {
@@ -231,6 +329,12 @@ async function askSingleChoice(
 		}
 
 		function handleInput(data: string) {
+			if (matchesKey(data, "f6")) {
+				if (suspendAnswerModal(overlayHandle)) {
+					ctx.ui.notify("Answer paused. Press F6 again to stash the editor draft, run your command, then use /answer-resume.", "info");
+				}
+				return;
+			}
 			if (editMode) {
 				if (matchesKey(data, Key.escape)) {
 					editMode = false;
@@ -261,7 +365,7 @@ async function askSingleChoice(
 					refresh();
 					return;
 				}
-				done({
+				finish({
 					type: "option",
 					label: selected.label,
 					value: selected.value,
@@ -270,7 +374,7 @@ async function askSingleChoice(
 				return;
 			}
 			if (matchesKey(data, Key.escape)) {
-				done(null);
+				finish(null);
 			}
 		}
 
@@ -314,7 +418,7 @@ async function askSingleChoice(
 				add(theme.fg("dim", " Enter to submit • Esc to go back"));
 			} else {
 				lines.push("");
-				add(theme.fg("dim", " ↑↓ navigate • Enter select • Esc cancel"));
+				add(theme.fg("dim", " ↑↓ navigate • Enter select • F6 pause (press again for Interlude) • Esc cancel"));
 			}
 
 			add(theme.fg("accent", "─".repeat(width)));
@@ -330,6 +434,13 @@ async function askSingleChoice(
 			},
 			handleInput,
 		};
+	}, {
+		overlay: true,
+		overlayOptions: { anchor: "bottom-center" },
+		onHandle(handle) {
+			overlayHandle = handle;
+			trackAnswerModal(handle, { cancel: cancelModal, snapshot: snapshotModal });
+		},
 	});
 }
 
@@ -352,13 +463,31 @@ async function askMultiChoice(
 		submitItem,
 	];
 
+	let overlayHandle: OverlayHandle | undefined;
+	let cancelModal: (() => void) | undefined;
+	let snapshotModal: (() => string) | undefined;
 	return ctx.ui.custom<AskAnswer[] | null>((tui: any, theme: any, _kb: any, done: (result: AskAnswer[] | null) => void) => {
+		const finish = (result: AskAnswer[] | null) => {
+			clearAnswerModal(overlayHandle);
+			done(result);
+		};
 		let optionIndex = 0;
 		let editMode = false;
 		let cachedLines: string[] | undefined;
 		let cachedWidth = -1;
 		const selected = new Map<string, AskAnswer>();
 		const editor = new Editor(tui, createEditorTheme(theme));
+		cancelModal = () => finish(null);
+		snapshotModal = () => JSON.stringify({
+			kind: "multi-choice-question",
+			question,
+			context,
+			options: choiceItems.map(({ label, value }) => ({ label, value })),
+			selected: Array.from(selected.values(), ({ label, value }) => ({ label, value })),
+			highlightedOption: allItems[optionIndex]?.label,
+			editMode,
+			draft: editMode ? editor.getText() : undefined,
+		});
 
 		editor.onSubmit = (value) => {
 			const trimmed = value.trim();
@@ -388,6 +517,12 @@ async function askMultiChoice(
 		}
 
 		function handleInput(data: string) {
+			if (matchesKey(data, "f6")) {
+				if (suspendAnswerModal(overlayHandle)) {
+					ctx.ui.notify("Answer paused. Press F6 again to stash the editor draft, run your command, then use /answer-resume.", "info");
+				}
+				return;
+			}
 			if (editMode) {
 				if (matchesKey(data, Key.escape)) {
 					editMode = false;
@@ -432,7 +567,7 @@ async function askMultiChoice(
 			if (matchesKey(data, Key.enter)) {
 				if (current.isSubmit) {
 					if (selected.size > 0) {
-						done(sortAnswers(Array.from(selected.values())));
+						finish(sortAnswers(Array.from(selected.values())));
 					}
 					return;
 				}
@@ -447,7 +582,7 @@ async function askMultiChoice(
 			}
 
 			if (matchesKey(data, Key.escape)) {
-				done(null);
+				finish(null);
 			}
 		}
 
@@ -519,7 +654,7 @@ async function askMultiChoice(
 				if (selected.size === 0) {
 					add(theme.fg("warning", " Select at least one answer before submitting."));
 				}
-				add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter edit/submit • Esc cancel"));
+				add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter edit/submit • F6 pause (press again for Interlude) • Esc cancel"));
 			}
 
 			add(theme.fg("accent", "─".repeat(width)));
@@ -535,6 +670,13 @@ async function askMultiChoice(
 			},
 			handleInput,
 		};
+	}, {
+		overlay: true,
+		overlayOptions: { anchor: "bottom-center" },
+		onHandle(handle) {
+			overlayHandle = handle;
+			trackAnswerModal(handle, { cancel: cancelModal, snapshot: snapshotModal });
+		},
 	});
 }
 
@@ -566,6 +708,14 @@ function withUILock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export default function askUserQuestion(pi: ExtensionAPI) {
+	pi.registerCommand("answer-resume", {
+		description: "Resume a quiz or question paused with F6",
+		handler: async (_args, ctx) => {
+			if (resumeAnswerModal()) ctx.ui.notify("Answer resumed.", "info");
+			else ctx.ui.notify("No paused answer modal to resume.", "warning");
+		},
+	});
+
 	pi.registerTool({
 		name: "ask_user_question",
 		label: "ask_user_question",
@@ -575,7 +725,9 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 			"Use this tool to ask exactly one clarifying question, missing-requirement question, preference question, or decision question before continuing.",
 		promptGuidelines: [
 			"Ask exactly one question per tool call.",
+			"For most questions, include a concise 3-6 word summaryTitle for the md-log heading; omit it when a title would be repetitive or awkward.",
 			"If you need answers to multiple questions, make multiple separate ask_user_question tool calls instead of combining them into one prompt.",
+			"When the user should explain a preference, goal, or direction in their own words, omit options (or pass an empty array) to open free-form text input; do not turn it into a choice list.",
 			'Users will always be able to select "Other" to provide custom text input when options are provided.',
 			"Use multiSelect: true only when you need multiple answers to the same question.",
 			'If you recommend a specific option, make it the first option in the list and add "(Recommended)" at the end of the label.',
@@ -599,8 +751,7 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 
 			return withUILock(async () => {
 				if (mode === "text") {
-					const editorTitle = context ? `${params.question}\n\n${context}` : params.question;
-					const answer = await ctx.ui.editor(editorTitle);
+					const answer = await askText(ctx, params.question, context);
 					if (answer === undefined) {
 						return cancelledResult(params.question, mode, context);
 					}

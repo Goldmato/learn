@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "id": "20261027-080508Z-778b5a",
+  "state": "completed",
+  "createdAt": "2026-10-27T08:05:08.628Z",
+  "updatedAt": "2026-10-27T08:05:56.010Z",
+  "backend": {
+    "id": "default",
+    "url": "http://127.0.0.1:8188"
+  },
+  "clientId": "pi-paint-tnm1n1z0",
+  "workflow": "MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\comfyui_workflows\\MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowHash": "18a3f9450c1c7840b516c79d2eda0f3d3dcd41ec181b80f09b8f2f4f6913d899",
+  "workflowSnapshotPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-080508Z-778b5a\\workflow.json",
+  "outputDir": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-080508Z-778b5a\\outputs",
+  "outputNodeIds": [
+    "9"
+  ],
+  "outputPrefix": "paint/20261027-080508Z-778b5a",
+  "prompt": "Warm, thoughtful editorial magazine illustration of a modern city neighborhood seen from a gentle elevated viewpoint, showing the economy as one interconnected system. Foreground: a row of diverse households—families on a sidewalk, a cafe terrace, a bus stop—people walking and carrying bags. Middle ground: workers and businesses producing goods and services—a bakery, a workshop, an office building, a delivery truck, a market stall, a construction crew near a bridge. Public infrastructure visible as roads, bridges, rail lines, streetlights, a school, and a water tower. Trade moving through the city: a port or rail freight terminal at the edge with shipping containers and cargo trucks. Subtle visual cycles: curving pathways and flowing ribbons of soft light connect people, goods, and money through the scene, looping from households to workers to businesses and back, repeated motifs of circular movement woven into the streets. Balanced, uncluttered composition, soft natural palette of warm ochres, teal, cream, and muted terracotta, clean flat-vector-meets-painterly style, conceptually accurate and grounded, not futuristic. No text, no words, no letters, no numbers, no charts, no flags, no logos, no political symbols.",
+  "negativePrompt": "text, words, letters, numbers, labels, charts, graphs, flags, logos, signs with writing, currency symbols, political imagery, futuristic, sci-fi, neon, cluttered, distorted faces, extra limbs, watermark",
+  "variables": {
+    "PositivePrompt": [
+      "",
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      "",
+      [
+        "34",
+        2
+      ]
+    ],
+    "BoundingBoxes": [
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1312,
+            "height": 880,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          }
+        ]
+      },
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1312,
+            "height": 880,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          }
+        ]
+      }
+    ],
+    "Resolution": [
+      "3:2 (Photo)",
+      1.1,
+      16
+    ]
+  },
+  "sourceInputPaths": [],
+  "uploadedInputs": [],
+  "appliedLoras": [],
+  "warnings": [],
+  "files": [
+    {
+      "path": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-080508Z-778b5a\\outputs\\paint_0.png",
+      "filename": "paint_0.png",
+      "mimeType": "image/png"
+    }
+  ],
+  "terminalAt": "2026-10-27T08:05:56.010Z",
+  "promptId": "7af991c0-b66c-4194-977a-2abaa4713a7a",
+  "submittedAt": "2026-10-27T08:05:08.639Z",
+  "outputManifest": {
+    "9": {
+      "images": [
+        {
+          "filename": "moss_image_00001_.png",
+          "subfolder": "paint\\20261027-080508Z-778b5a",
+          "type": "output",
+          "metadata": {
+            "kind": "image",
+            "width": 1312,
+            "height": 880
+          },
+          "id": "831a3d04-518e-4e1b-855f-4343e3379175"
+        }
+      ]
+    },
+    "34": {
+      "dims": [
+        1312,
+        880
+      ]
+    },
+    "37": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Warm, thoughtful editorial magazine illustration of a modern city neighborhood seen from a gentle elevated viewpoint, showing the economy as one interconnected system. Foreground: a row of diverse households—families on a sidewalk, a cafe terrace, a bus stop—people walking and carrying bags. Middle ground: workers and businesses producing goods and services—a bakery, a workshop, an office building, a delivery truck, a market stall, a construction crew near a bridge. Public infrastructure visible as roads, bridges, rail lines, streetlights, a school, and a water tower. Trade moving through the city: a port or rail freight terminal at the edge with shipping containers and cargo trucks. Subtle visual cycles: curving pathways and flowing ribbons of soft light connect people, goods, and money through the scene, looping from households to workers to businesses and back, repeated motifs of circular movement woven into the streets. Balanced, uncluttered composition, soft natural palette of warm ochres, teal, cream, and muted terracotta, clean flat-vector-meets-painterly style, conceptually accurate and grounded, not futuristic. No text, no words, no letters, no numbers, no charts, no flags, no logos, no political symbols.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-440,-656,440,656]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    },
+    "18:13": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Warm, thoughtful editorial magazine illustration of a modern city neighborhood seen from a gentle elevated viewpoint, showing the economy as one interconnected system. Foreground: a row of diverse households—families on a sidewalk, a cafe terrace, a bus stop—people walking and carrying bags. Middle ground: workers and businesses producing goods and services—a bakery, a workshop, an office building, a delivery truck, a market stall, a construction crew near a bridge. Public infrastructure visible as roads, bridges, rail lines, streetlights, a school, and a water tower. Trade moving through the city: a port or rail freight terminal at the edge with shipping containers and cargo trucks. Subtle visual cycles: curving pathways and flowing ribbons of soft light connect people, goods, and money through the scene, looping from households to workers to businesses and back, repeated motifs of circular movement woven into the streets. Balanced, uncluttered composition, soft natural palette of warm ochres, teal, cream, and muted terracotta, clean flat-vector-meets-painterly style, conceptually accurate and grounded, not futuristic. No text, no words, no letters, no numbers, no charts, no flags, no logos, no political symbols.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-440,-656,440,656]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    }
+  },
+  "completedAt": "2026-10-27T08:05:56.010Z",
+  "generationElapsedMs": 47371
+}

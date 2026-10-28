@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "id": "20261027-062341Z-7a9297",
+  "state": "completed",
+  "createdAt": "2026-10-27T06:23:41.814Z",
+  "updatedAt": "2026-10-27T06:24:39.334Z",
+  "backend": {
+    "id": "default",
+    "url": "http://127.0.0.1:8188"
+  },
+  "clientId": "pi-paint-2ncaue9b",
+  "workflow": "MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\comfyui_workflows\\MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowHash": "afeca7121bceee53aad2fc092edbfae82b03ff40c956a87aa48ba466c99fa26a",
+  "workflowSnapshotPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-062341Z-7a9297\\workflow.json",
+  "outputDir": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-062341Z-7a9297\\outputs",
+  "outputNodeIds": [
+    "9"
+  ],
+  "outputPrefix": "paint/20261027-062341Z-7a9297",
+  "prompt": "Charming, clear educational infographic in clean botanical illustration style, showing the mushroom life cycle as a circular sequence of five stages arranged clockwise around a light background. Stage 1: spores landing and germinating on soil, with small sprouting spore cells. Stage 2: threadlike white mycelium spreading through brown soil, shown as fine branching filaments. Stage 3: a tiny pin-stage mushroom emerging from the mycelium. Stage 4: a young mushroom growing into a mature cap, with an accurate anatomy: rounded cap, stem (stipe), ring, and visible gills underneath the cap. Stage 5: the mature gills releasing a cloud of spores that drift back to the start of the cycle. Each stage has a simple readable label. Earthy color palette of warm browns, moss greens, cream, and terracotta accents. Light off-white background, balanced composition, soft even lighting, crisp line work, no clutter.",
+  "negativePrompt": "photo, photorealistic, dark background, cluttered, distorted anatomy, extra mushrooms beyond the cycle, unreadable text, watermark, blurry, low detail",
+  "variables": {
+    "PositivePrompt": [
+      "",
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      "",
+      [
+        "34",
+        2
+      ]
+    ],
+    "BoundingBoxes": [
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1120,
+            "height": 1120,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          }
+        ]
+      },
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1120,
+            "height": 1120,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          }
+        ]
+      }
+    ],
+    "Resolution": [
+      "1:1 (Square)",
+      1.2,
+      16
+    ]
+  },
+  "sourceInputPaths": [],
+  "uploadedInputs": [],
+  "appliedLoras": [],
+  "warnings": [],
+  "files": [
+    {
+      "path": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-062341Z-7a9297\\outputs\\paint_0.png",
+      "filename": "paint_0.png",
+      "mimeType": "image/png"
+    }
+  ],
+  "terminalAt": "2026-10-27T06:24:39.334Z",
+  "promptId": "86da085a-d757-4722-b2af-08540fad444f",
+  "submittedAt": "2026-10-27T06:23:41.824Z",
+  "outputManifest": {
+    "9": {
+      "images": [
+        {
+          "filename": "moss_image_00001_.png",
+          "subfolder": "paint\\20261027-062341Z-7a9297",
+          "type": "output",
+          "metadata": {
+            "kind": "image",
+            "width": 1120,
+            "height": 1120
+          },
+          "id": "f7993c5f-64b2-4118-a820-cc5b0aab6e4b"
+        }
+      ]
+    },
+    "34": {
+      "dims": [
+        1120,
+        1120
+      ]
+    },
+    "37": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Charming, clear educational infographic in clean botanical illustration style, showing the mushroom life cycle as a circular sequence of five stages arranged clockwise around a light background. Stage 1: spores landing and germinating on soil, with small sprouting spore cells. Stage 2: threadlike white mycelium spreading through brown soil, shown as fine branching filaments. Stage 3: a tiny pin-stage mushroom emerging from the mycelium. Stage 4: a young mushroom growing into a mature cap, with an accurate anatomy: rounded cap, stem (stipe), ring, and visible gills underneath the cap. Stage 5: the mature gills releasing a cloud of spores that drift back to the start of the cycle. Each stage has a simple readable label. Earthy color palette of warm browns, moss greens, cream, and terracotta accents. Light off-white background, balanced composition, soft even lighting, crisp line work, no clutter.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-560,-560,560,560]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    },
+    "18:13": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Charming, clear educational infographic in clean botanical illustration style, showing the mushroom life cycle as a circular sequence of five stages arranged clockwise around a light background. Stage 1: spores landing and germinating on soil, with small sprouting spore cells. Stage 2: threadlike white mycelium spreading through brown soil, shown as fine branching filaments. Stage 3: a tiny pin-stage mushroom emerging from the mycelium. Stage 4: a young mushroom growing into a mature cap, with an accurate anatomy: rounded cap, stem (stipe), ring, and visible gills underneath the cap. Stage 5: the mature gills releasing a cloud of spores that drift back to the start of the cycle. Each stage has a simple readable label. Earthy color palette of warm browns, moss greens, cream, and terracotta accents. Light off-white background, balanced composition, soft even lighting, crisp line work, no clutter.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-560,-560,560,560]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    }
+  },
+  "completedAt": "2026-10-27T06:24:39.334Z",
+  "generationElapsedMs": 57510
+}

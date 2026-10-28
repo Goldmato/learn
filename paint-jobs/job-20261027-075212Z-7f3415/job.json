@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "id": "20261027-075212Z-7f3415",
+  "state": "completed",
+  "createdAt": "2026-10-27T07:52:12.851Z",
+  "updatedAt": "2026-10-27T07:53:22.504Z",
+  "backend": {
+    "id": "default",
+    "url": "http://127.0.0.1:8188"
+  },
+  "clientId": "pi-paint-br0epbya",
+  "workflow": "MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\comfyui_workflows\\MOSS_Image_base_T2i_BBoxes_API.json",
+  "workflowHash": "9b960279f961e47808fddbf25ccd8ae0a7f445a693a08ff4f690d60288fac6a5",
+  "workflowSnapshotPath": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-075212Z-7f3415\\workflow.json",
+  "outputDir": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-075212Z-7f3415\\outputs",
+  "outputNodeIds": [
+    "9"
+  ],
+  "outputPrefix": "paint/20261027-075212Z-7f3415",
+  "prompt": "Beautiful natural-history scientific illustration for a beginner, elegant realistic macro illustration. A butterfly wing shown partly in close-up: a delicate translucent wing membrane beneath many tiny overlapping golden-brown scales arranged like shingles. Beside it, a single scale magnified to reveal fine microscopic ridges that catch light and reflect a vivid iridescent blue. A subtle visual transition flows from the whole wing on the left to the magnified scale on the right. Clear visual hierarchy, soft natural lighting, refined botanical-plate style, clean uncluttered background. No labels, no text, no numbers, no arrows, accurate and not overly technical.",
+  "negativePrompt": "text, labels, letters, numbers, captions, watermarks, arrows, annotations, cartoon, clutter, distorted anatomy, extra wings, blurry",
+  "variables": {
+    "PositivePrompt": [
+      "",
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      "",
+      [
+        "34",
+        2
+      ]
+    ],
+    "BoundingBoxes": [
+      [
+        "33",
+        0
+      ],
+      [
+        "33",
+        1
+      ],
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1312,
+            "height": 880,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          }
+        ]
+      },
+      {
+        "__value__": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1312,
+            "height": 880,
+            "metadata": {
+              "type": "obj",
+              "text": "",
+              "desc": "Full-canvas scene background",
+              "palette": []
+            }
+          }
+        ]
+      }
+    ],
+    "Resolution": [
+      "3:2 (Photo)",
+      1.1,
+      16
+    ]
+  },
+  "sourceInputPaths": [],
+  "uploadedInputs": [],
+  "appliedLoras": [],
+  "warnings": [],
+  "files": [
+    {
+      "path": "C:\\Users\\sambe\\Documents\\Potato Vault\\.pi\\paint-jobs\\job-20261027-075212Z-7f3415\\outputs\\paint_0.png",
+      "filename": "paint_0.png",
+      "mimeType": "image/png"
+    }
+  ],
+  "terminalAt": "2026-10-27T07:53:22.504Z",
+  "promptId": "059afe36-1f3c-4a22-92a4-d2289a51a6d8",
+  "submittedAt": "2026-10-27T07:52:12.883Z",
+  "outputManifest": {
+    "9": {
+      "images": [
+        {
+          "filename": "moss_image_00001_.png",
+          "subfolder": "paint\\20261027-075212Z-7f3415",
+          "type": "output",
+          "metadata": {
+            "kind": "image",
+            "width": 1312,
+            "height": 880
+          },
+          "id": "fe99d39c-11b4-424a-89eb-91cd5219dbe2"
+        }
+      ]
+    },
+    "34": {
+      "dims": [
+        1312,
+        880
+      ]
+    },
+    "37": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Beautiful natural-history scientific illustration for a beginner, elegant realistic macro illustration. A butterfly wing shown partly in close-up: a delicate translucent wing membrane beneath many tiny overlapping golden-brown scales arranged like shingles. Beside it, a single scale magnified to reveal fine microscopic ridges that catch light and reflect a vivid iridescent blue. A subtle visual transition flows from the whole wing on the left to the magnified scale on the right. Clear visual hierarchy, soft natural lighting, refined botanical-plate style, clean uncluttered background. No labels, no text, no numbers, no arrows, accurate and not overly technical.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-440,-656,440,656]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    },
+    "18:13": {
+      "text": [
+        "{\"summary\":{\"caption\":\"Beautiful natural-history scientific illustration for a beginner, elegant realistic macro illustration. A butterfly wing shown partly in close-up: a delicate translucent wing membrane beneath many tiny overlapping golden-brown scales arranged like shingles. Beside it, a single scale magnified to reveal fine microscopic ridges that catch light and reflect a vivid iridescent blue. A subtle visual transition flows from the whole wing on the left to the magnified scale on the right. Clear visual hierarchy, soft natural lighting, refined botanical-plate style, clean uncluttered background. No labels, no text, no numbers, no arrows, accurate and not overly technical.\"},\"items\":[{\"label\":\"object\",\"caption\":\"Full-canvas scene background\",\"bbox\":[-440,-656,440,656]}],\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}"
+      ]
+    }
+  },
+  "completedAt": "2026-10-27T07:53:22.504Z",
+  "generationElapsedMs": 69621
+}

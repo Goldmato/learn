@@ -1,76 +1,43 @@
 ---
 name: visualize
-description: "Add a correct, minimal visual to a lesson — a diagram or geometric picture — that renders inline in the Obsidian log. Use when an idea is genuinely clearer as a picture: a dependency graph, system/flow, sequence, state machine, tree, comparison, or a spatial/geometric thing (coordinate geometry, number line, vectors, a plot, a physical layout). Outsources authoring+rendering to a maker subagent that verifies the image by looking at it, then you embed the returned file."
+description: "Add a useful visual to a lesson and place it in the linked Obsidian note. Prefer the async ComfyUI image generator for illustrations and conceptual pictures; use exact diagrams only when structure, labels, or geometry must be precise, especially for curriculum plans."
 ---
 
 # Visualize
 
-A picture earns its place only when it shows something words can't — shape, structure, direction, relationship, geometry. This skill produces ONE such picture, guarantees it is **correct** (the maker renders it and looks at it before returning), and drops it into the lesson so it renders inline in the Obsidian `md-log` file.
+Use a visual when it reveals something that prose or a simple equation does not. Prefer the integrated ComfyUI image generator for ordinary illustrations and conceptual pictures. Reserve diagram makers (mermaid, svg) for visuals whose exact structure, labels, or geometry matter.
 
-You are the **creative director**. You decide the exact idea and distill it to its fewest carrying elements. A **maker subagent** does the authoring, rendering, visual verification, and saving, then returns a filename. You embed that filename in your reply.
+## Choose the visual method
 
-## When to visualize (and when not to)
+1. **ComfyUI is the default** for illustrative, evocative, representative, or explanatory images: a scene, object, metaphor, process overview, or visual analogy. It can produce a useful picture without requiring the main agent to manage workflow or rendering details.
+2. **Use a diagram instead** when the user explicitly asks for one, or when correctness depends on exact nodes, relationships, labels, data, or spatial geometry. This is especially useful for curriculum plans and other structured teaching materials:
+   - `mermaid-maker` for dependency graphs, flowcharts, sequences, state machines, trees, and other node-and-relationship diagrams.
+   - `svg-maker` for exact coordinate geometry, number lines, vectors, plots, and custom layouts.
+3. Do not ask ComfyUI to render exact text, data charts, labeled schemas, or a diagram whose edges or measurements must be exact; generated images can distort those details. Do not use a diagram maker to produce a decorative illustration.
+4. If a visual adds no information, skip it.
 
-This teaching system builds a **dependency graph in the learner's head** — axioms at the root, derived facts hanging off them. A visual is powerful exactly when it makes that structure (or a geometry) visible. Reach for one when:
+## Request an illustration with ComfyUI
 
-- The idea is a **structure or relationship**: dependencies, a system with parts and arrows, a flow/pipeline, a sequence of exchanges, a state machine, a tree/hierarchy, a comparison, a containment (what's inside vs outside).
-- The idea is **spatial or geometric**: coordinate geometry, a number line, vectors, a function's shape, a physical arrangement.
+Use the single `teach_comfyui_paint` tool for an ordinary image request. It starts the ComfyUI generator subagent in the background, inserts a temporary marker at the selected point in the linked md-log note, and later replaces it with a caption and vault attachment embed.
 
-Do NOT visualize when prose or a single equation already carries it. A decorative diagram that just restates the sentence next to it adds noise and a chance to be wrong. When in doubt, don't — a missing visual is cheaper than a false one.
+Provide:
 
-## Choose the maker
+- `prompt`: a clear, plain-language description of the image. Describe the subject, meaningful visual relationships, and style; do not specify API/workflow details or ask for exact rendered text.
+- `captionTitle`: a concise, human-readable title naming the subject of the image; avoid generic labels such as "Image Note".
+- `caption`: one or two short sentences saying what the image shows and what it represents. It appears italicized and quoted inside the titled callout.
+- `insertAfter`: an exact, unique sentence or paragraph already present in the managed linked-note transcript, chosen where the image best supports the explanation.
 
-Two makers, discovered from `.pi/agents/`:
+The tool requires a linked md-log note. If no note is linked or no suitable transcript anchor exists, do not bypass the tool or launch the image-maker directly. Link the note or add suitable explanatory text first. The generator chooses its own aspect ratio and layout. The tool handles the marker, background subagent, vault copy, and final Obsidian embed; do not wait for image bytes, inspect the generated image, manually move it, or add a second embed. The image is asynchronous, so continue the lesson without implying it is already complete.
 
-- **`mermaid-maker`** — structural/relational visuals: dependency graphs, flowcharts, sequence/state/ER/class diagrams, trees, mindmaps, timelines. This is the default and fits the dependency-graph pedagogy directly.
-- **`svg-maker`** — spatial/geometric visuals Mermaid can't lay out: exact coordinates, geometry figures, number lines, vectors, plots, custom shapes.
+## Request a precise diagram
 
-Rule of thumb: if it's *nodes-and-edges / relationships*, use mermaid-maker. If it's *positions-and-shapes / geometry*, use svg-maker.
+Dispatch the suitable maker subagent through tintinweb's `pi-subagents` `Agent` tool. Give it one idea and the minimal set of elements needed to express it. Do not delegate to both makers for the same visual.
 
-## Brief the maker well: one idea, fewest elements
+- Use `mermaid-maker` for structure and relationships. Keep labels short and prefer a small number of truthful nodes and edges.
+- Use `svg-maker` only when exact positions, shapes, coordinates, or proportions matter. State the values and relationships precisely; do not leave geometry to visual guesswork.
 
-The most common failure is **cramming** — every extra label makes the picture harder to read AND harder to lay out correctly. Before briefing, prune to the fewest elements that carry the idea, and for each ask: *"if I delete this, is the idea still clear?"* If yes, delete it.
+The maker must render a preview, inspect the returned image, correct any mistakes, and publish only after verification. SVG images are saved in `001-Attachments/~svg`; Mermaid images are saved in `001-Attachments/~mermaid`. If a maker cannot make a correct visual, it must return `RESULT: NONE`; do not invent a substitute. When a diagram maker returns a published filename, embed that file in the lesson using the actual filename and path it returned.
 
-Give the maker the concept AND the concrete elements you want — not a vague topic, and not a long checklist.
+## Keep the visual focused
 
-- BAD: "make a diagram about how TCP works"
-- GOOD: "graph TD: a node 'packet' at the top; arrows down to 'ordering' and 'retransmit on loss'; both arrows down into 'reliable stream'. No title. Show that reliability is built FROM packets, not alongside them."
-
-Keep the idea intact but trust the maker to compose; if your brief lists more than ~5–7 elements, cut it first.
-
-## Invoke
-
-With tintinweb's `pi-subagents` extension, dispatch the custom maker type with `Agent`:
-
-```
-Agent({ subagent_type: "mermaid-maker", prompt: "<your minimal, concrete brief>", description: "Create a <kind> visual", run_in_background: false })
-Agent({ subagent_type: "svg-maker", prompt: "<your minimal, concrete brief>", description: "Create a geometric visual", run_in_background: false })
-```
-
-The maker owns its own purpose-built tools (`write_*`/`edit_*`/`render_*`) — it authors the source, renders it to a PNG, **looks at the PNG and iterates until it is correct and clean**, publishes it into the vault with a unique filename, and returns:
-
-```
-RESULT:
-filename: viz-<slug>-<timestamp>.png
-path: <cwd>/viz/viz-<slug>-<timestamp>.png
-```
-
-If it returns `RESULT: NONE`, it couldn't make a correct picture of the brief — simplify or rethink, or decide the visual isn't worth it. Never hand-author or fake a diagram yourself; correctness depends on the maker's render-and-inspect loop.
-
-## Embed it in the lesson
-
-Put the embed directly in your teaching reply, using Obsidian's wikilink embed with the returned **filename** (not the full path) and a display width:
-
-```
-![[viz-<slug>-<timestamp>.png|500]]
-```
-
-That's all. The `md-log` extension mirrors your reply text verbatim into the linked `.md`, and Obsidian resolves the embed by filename anywhere in the vault (the maker saves into the project's `viz` folder, which is inside the vault) — so it renders inline in the lesson automatically. Width `|500` is a good default; use larger for dense diagrams. Introduce the visual in a sentence, then let it carry the idea — don't narrate every element back in prose.
-
-## Why this is reliable
-
-- The maker never returns a picture it hasn't **looked at**, so "renders fine but says something false" is caught before it reaches the learner.
-- PNG embed means **what the maker verified is pixel-identical to what the learner sees** — no re-render drift.
-- Unique filenames keep Obsidian's by-filename embed resolution unambiguous.
-
-> The makers render through the project's `visual-tools` extension (Mermaid via a bundled `@mermaid-js/mermaid-cli` + installed Chrome; SVG via `rsvg-convert`, fallback ImageMagick). You don't render anything yourself — you only brief the maker and embed the filename it returns.
+Choose one idea and remove anything that does not make it clearer. Avoid decorative complexity, unsupported details, and dense labels. Introduce the visual with a short sentence that explains why it is useful; do not narrate every visible element.
