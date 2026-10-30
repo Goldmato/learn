@@ -8,9 +8,9 @@
  * so mermaid and svg never share a source file.
  */
 
-import { spawn } from "node:child_process"
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { tmpdir } from "node:os"
-import { basename, delimiter, dirname, isAbsolute, join, relative, sep } from "node:path"
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, sep } from "node:path"
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs"
 
 // rsvg-convert lives under MacPorts (/opt/local/bin); magick/gs under
@@ -51,6 +51,37 @@ export function findChrome(): string | undefined {
   return undefined
 }
 
+/**
+ * Windows cannot spawn an extensionless absolute path — libuv only applies
+ * PATHEXT while searching PATH, not for a path given outright. npm's `.bin`
+ * shims are extensionless, so resolve the real launcher first.
+ */
+function resolveCommand(cmd: string): string {
+  if (process.platform !== "win32" || !isAbsolute(cmd) || extname(cmd)) return cmd
+  for (const ext of [".cmd", ".exe", ".bat"]) {
+    const candidate = cmd + ext
+    if (existsSync(candidate)) return candidate
+  }
+  return cmd
+}
+
+/** Batch shims need cmd.exe; Node refuses to spawn `.cmd`/`.bat` directly. */
+function spawnResolved(cmd: string, args: string[], opts: SpawnOptions): ChildProcess {
+  const resolved = resolveCommand(cmd)
+  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(resolved)) {
+    const line = [resolved, ...args].map(quoteWindows).join(" ")
+    return spawn(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `"${line}"`], {
+      ...opts,
+      windowsVerbatimArguments: true,
+    })
+  }
+  return spawn(resolved, args, opts)
+}
+
+function quoteWindows(value: string): string {
+  return /[\s"]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
 export interface RunResult {
   code: number | null
   stdout: string
@@ -65,7 +96,7 @@ export function run(
 ): Promise<RunResult> {
   return new Promise((resolveRun) => {
     const augmentedPath = [...EXTRA_PATH, process.env.PATH ?? ""].join(delimiter)
-    const child = spawn(cmd, args, {
+    const child = spawnResolved(cmd, args, {
       cwd: opts.cwd,
       env: { ...process.env, ...(opts.env ?? {}), PATH: augmentedPath },
     })
