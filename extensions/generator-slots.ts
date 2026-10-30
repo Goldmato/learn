@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
 	acquireGeneratorSlot,
-	generatorLimit,
 	generatorSlotStatus,
 	isGeneratorAgentType,
 } from "../lib/generator-slots.ts";
@@ -25,26 +24,16 @@ function generatorTypeOf(input: unknown): string | undefined {
  */
 export default function generatorSlots(pi: ExtensionAPI) {
 	/** toolCallId -> release for a dispatch that is still running. */
-	const held = new Map<string, { release: () => void; type: string }>();
+	const held = new Map<string, { release: () => void; type: string; agentId?: string }>();
+	const toolCallsByAgent = new Map<string, string>();
+	const earlyCompletions = new Set<string>();
 
 	const release = (toolCallId: string) => {
 		const entry = held.get(toolCallId);
 		if (!entry) return;
 		held.delete(toolCallId);
+		if (entry.agentId) toolCallsByAgent.delete(entry.agentId);
 		entry.release();
-	};
-
-	/**
-	 * Release the oldest held slot of this generator type. Completion events carry
-	 * no tool call id, so the type is the closest available identity.
-	 */
-	const releaseOldest = (type: string) => {
-		for (const [toolCallId, entry] of held) {
-			if (entry.type === type) {
-				release(toolCallId);
-				return;
-			}
-		}
 	};
 
 	pi.on("tool_call", async (event, ctx) => {
@@ -52,20 +41,50 @@ export default function generatorSlots(pi: ExtensionAPI) {
 		const type = generatorTypeOf(event.input);
 		if (!type) return;
 
-		const queued = generatorSlotStatus().active >= generatorLimit();
+		const status = generatorSlotStatus();
+		const queued = status.active >= status.limit || status.activeTypes.includes(type);
 		if (queued) ctx.ui.notify(`Waiting for a free generator slot (${type})…`, "info");
-		const releaseSlot = await acquireGeneratorSlot(ctx.signal);
+		const releaseSlot = await acquireGeneratorSlot(type, ctx.signal);
 		held.set(event.toolCallId, { release: releaseSlot, type });
 	});
 
-	pi.on("tool_result", (event) => {
+	pi.on("tool_result", (event, ctx) => {
 		if (event.toolName !== "Agent" || !generatorTypeOf(event.input)) return;
 		// A background dispatch keeps its slot until the completion event.
-		if (event.isError || event.input.run_in_background !== true) release(event.toolCallId);
+		if (event.isError || event.input.run_in_background !== true) {
+			release(event.toolCallId);
+			return;
+		}
+
+		const entry = held.get(event.toolCallId);
+		const details = isRecord(event.details) ? event.details : undefined;
+		const agentId = details?.status === "background" && typeof details.agentId === "string"
+			? details.agentId
+			: undefined;
+		if (!entry || entry.type !== generatorTypeOf(event.input) || !agentId) {
+			ctx.ui.notify(
+				`Could not match the ${String(generatorTypeOf(event.input))} background job to its generator slot; the slot will remain reserved until completion or timeout.`,
+				"error",
+			);
+			return;
+		}
+
+		entry.agentId = agentId;
+		toolCallsByAgent.set(agentId, event.toolCallId);
+		if (earlyCompletions.delete(agentId)) release(event.toolCallId);
 	});
 
 	const onSettled = (data: unknown) => {
-		if (isRecord(data) && isGeneratorAgentType(data.type)) releaseOldest(data.type);
+		if (!isRecord(data) || !isGeneratorAgentType(data.type) || typeof data.id !== "string") return;
+		const toolCallId = toolCallsByAgent.get(data.id);
+		if (toolCallId) {
+			if (held.get(toolCallId)?.type === data.type) release(toolCallId);
+			return;
+		}
+
+		if ([...held.values()].some((entry) => entry.type === data.type && !entry.agentId)) {
+			earlyCompletions.add(data.id);
+		}
 	};
 	pi.events.on("subagents:completed", onSettled);
 	pi.events.on("subagents:failed", onSettled);
@@ -73,6 +92,8 @@ export default function generatorSlots(pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => {
 		for (const entry of held.values()) entry.release();
 		held.clear();
+		toolCallsByAgent.clear();
+		earlyCompletions.clear();
 	});
 
 	pi.registerCommand("generator-slots", {

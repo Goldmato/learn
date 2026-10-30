@@ -21,14 +21,21 @@ const SLOT_TIMEOUT_MS = 20 * 60 * 1000;
 
 const STATE_KEY = Symbol.for("pi.generator-slots.state");
 
+interface SlotWaiter {
+	type: string;
+	resolve: () => void;
+	signal?: AbortSignal;
+	onAbort?: () => void;
+}
+
 interface SlotState {
-	active: number;
-	waiters: Array<() => void>;
+	activeTypes: Set<string>;
+	waiters: SlotWaiter[];
 }
 
 function state(): SlotState {
 	const holder = globalThis as unknown as Record<symbol, SlotState | undefined>;
-	holder[STATE_KEY] ??= { active: 0, waiters: [] };
+	holder[STATE_KEY] ??= { activeTypes: new Set(), waiters: [] };
 	return holder[STATE_KEY]!;
 }
 
@@ -43,47 +50,74 @@ export function generatorLimit(): number {
 	return Math.min(MAX_LIMIT, Math.max(1, configured));
 }
 
-export function generatorSlotStatus(): { active: number; limit: number; waiting: number } {
+export function generatorSlotStatus(): {
+	active: number;
+	activeTypes: string[];
+	limit: number;
+	waiting: number;
+} {
 	const current = state();
-	return { active: current.active, limit: generatorLimit(), waiting: current.waiters.length };
+	return {
+		active: current.activeTypes.size,
+		activeTypes: [...current.activeTypes],
+		limit: generatorLimit(),
+		waiting: current.waiters.length,
+	};
 }
 
 /**
- * Wait for a free generator slot. The returned release function is idempotent.
- * Rejects only when the caller's signal aborts while queued.
+ * Wait for a global slot not already held by this generator type. The returned
+ * release function is idempotent; queued calls reject if their signal aborts.
  */
-export async function acquireGeneratorSlot(signal?: AbortSignal): Promise<() => void> {
-	const current = state();
-	const limit = generatorLimit();
-	const cancelled = () => new Error("Cancelled while waiting for a free generator slot.");
+export async function acquireGeneratorSlot(type: string, signal?: AbortSignal): Promise<() => void> {
+	if (!isGeneratorAgentType(type)) throw new Error(`Unknown generator type: ${type}`);
 
-	if (current.active < limit) {
-		current.active++;
-		return releaseOnce(current);
+	const current = state();
+	if (canAcquire(current, type)) {
+		current.activeTypes.add(type);
+		return releaseOnce(current, type);
 	}
-	if (signal?.aborted) throw cancelled();
+	if (signal?.aborted) throw new Error("Cancelled while waiting for a free generator slot.");
 
 	await new Promise<void>((resolve, reject) => {
-		const waiter = () => {
-			signal?.removeEventListener("abort", onAbort);
-			// Claim the slot here, not after the await, so a concurrent acquire
-			// cannot observe the freed slot as still available.
-			current.active++;
-			resolve();
+		const waiter: SlotWaiter = {
+			type,
+			signal,
+			resolve: () => {
+				signal?.removeEventListener("abort", onAbort);
+				resolve();
+			},
 		};
 		const onAbort = () => {
 			const index = current.waiters.indexOf(waiter);
-			if (index >= 0) current.waiters.splice(index, 1);
-			reject(cancelled());
+			if (index < 0) return;
+			current.waiters.splice(index, 1);
+			reject(new Error("Cancelled while waiting for a free generator slot."));
 		};
+		waiter.onAbort = onAbort;
 		current.waiters.push(waiter);
 		signal?.addEventListener("abort", onAbort, { once: true });
 	});
 
-	return releaseOnce(current);
+	return releaseOnce(current, type);
 }
 
-function releaseOnce(current: SlotState): () => void {
+function canAcquire(current: SlotState, type: string): boolean {
+	return current.activeTypes.size < generatorLimit() && !current.activeTypes.has(type);
+}
+
+function drainWaiters(current: SlotState): void {
+	while (current.activeTypes.size < generatorLimit()) {
+		const index = current.waiters.findIndex((waiter) => !current.activeTypes.has(waiter.type));
+		if (index < 0) return;
+		const [waiter] = current.waiters.splice(index, 1);
+		current.activeTypes.add(waiter.type);
+		waiter.signal?.removeEventListener("abort", waiter.onAbort!);
+		waiter.resolve();
+	}
+}
+
+function releaseOnce(current: SlotState, type: string): () => void {
 	let released = false;
 	const timer = setTimeout(() => release(), SLOT_TIMEOUT_MS);
 	timer.unref?.();
@@ -91,8 +125,8 @@ function releaseOnce(current: SlotState): () => void {
 		if (released) return;
 		released = true;
 		clearTimeout(timer);
-		current.active = Math.max(0, current.active - 1);
-		current.waiters.shift()?.();
+		current.activeTypes.delete(type);
+		drainWaiters(current);
 	}
 	return release;
 }

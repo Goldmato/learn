@@ -24,8 +24,15 @@ function createFixture() {
 	const ctx = { signal: undefined, ui: { notify: (message) => notifications.push(message) } };
 	const call = (toolCallId, subagent_type, extra = {}) =>
 		handlers.get("tool_call")({ type: "tool_call", toolName: "Agent", toolCallId, input: { subagent_type, ...extra } }, ctx);
-	const result = (toolCallId, subagent_type, extra = {}, isError = false) =>
-		handlers.get("tool_result")({ type: "tool_result", toolName: "Agent", toolCallId, input: { subagent_type, ...extra }, isError });
+	const result = (toolCallId, subagent_type, extra = {}, isError = false, details) =>
+		handlers.get("tool_result")({
+			type: "tool_result",
+			toolName: "Agent",
+			toolCallId,
+			input: { subagent_type, ...extra },
+			isError,
+			details,
+		}, ctx);
 	const reset = () => handlers.get("session_shutdown")();
 	return { handlers, eventHandlers, notifications, call, result, reset };
 }
@@ -62,30 +69,46 @@ test("only generator subagent types are gated", () => {
 	assert.ok(!isGeneratorAgentType(undefined));
 });
 
-test("a third generator waits until a slot frees, and non-generators never wait", async () => {
+test("same-kind jobs serialize while different kinds share the global cap", async () => {
 	process.env.PI_GENERATOR_CONCURRENCY = "2";
 	const fixture = createFixture();
 	try {
-		await fixture.call("a", "breeze-tts-maker");
-		await fixture.call("b", "comfyui-image-maker");
-		assert.equal(generatorSlotStatus().active, 2);
+		await fixture.call("a", "breeze-tts-maker", { run_in_background: true });
+		fixture.result("a", "breeze-tts-maker", { run_in_background: true }, false, { status: "background", agentId: "job-a" });
 
-		let thirdDone = false;
-		const third = fixture.call("c", "mermaid-maker").then(() => { thirdDone = true; });
+		let secondDone = false;
+		const second = fixture.call("b", "breeze-tts-maker", { run_in_background: true }).then(() => { secondDone = true; });
 		await settle();
-		assert.equal(thirdDone, false, "the third generator is queued");
+		assert.equal(secondDone, false, "another job of the same kind is queued despite a free global slot");
 		assert.equal(generatorSlotStatus().waiting, 1);
-		assert.match(fixture.notifications.join("\n"), /Waiting for a free generator slot \(mermaid-maker\)/);
+		assert.match(fixture.notifications.join("\n"), /Waiting for a free generator slot \(breeze-tts-maker\)/);
 
-		// A non-generator dispatch is never gated.
+		await fixture.call("c", "comfyui-image-maker", { run_in_background: true });
+		fixture.result("c", "comfyui-image-maker", { run_in_background: true }, false, {
+			status: "background",
+			agentId: "job-c",
+		});
+		assert.equal(generatorSlotStatus().active, 2, "different generator kinds can overlap up to the global cap");
 		await fixture.call("d", "researcher");
-		assert.equal(generatorSlotStatus().active, 2);
+		assert.equal(generatorSlotStatus().active, 2, "non-generators never consume a slot");
 
-		// Completing one generator frees exactly one slot.
+		fixture.eventHandlers.get("subagents:completed")({ type: "breeze-tts-maker", id: "unknown-job" });
+		assert.equal(generatorSlotStatus().active, 2, "an unknown completion cannot release a held slot");
+		fixture.eventHandlers.get("subagents:completed")({ type: "comfyui-image-maker", id: "job-c" });
+		assert.equal(generatorSlotStatus().active, 1);
+		assert.equal(secondDone, false, "freeing another kind does not bypass same-kind serialization");
+
 		fixture.eventHandlers.get("subagents:completed")({ type: "breeze-tts-maker", id: "job-a" });
-		await third;
-		assert.equal(thirdDone, true);
-		assert.equal(generatorSlotStatus().active, 2);
+		await second;
+		fixture.result("b", "breeze-tts-maker", { run_in_background: true }, false, {
+			status: "background",
+			agentId: "job-b",
+		});
+		assert.equal(generatorSlotStatus().active, 1);
+		fixture.eventHandlers.get("subagents:completed")({ type: "breeze-tts-maker", id: "job-a" });
+		assert.equal(generatorSlotStatus().active, 1, "a duplicate completion cannot release the next job");
+		fixture.eventHandlers.get("subagents:completed")({ type: "breeze-tts-maker", id: "job-b" });
+		assert.equal(generatorSlotStatus().active, 0);
 	} finally {
 		fixture.reset();
 		delete process.env.PI_GENERATOR_CONCURRENCY;
@@ -112,10 +135,42 @@ test("a foreground dispatch releases on its result, a background one on completi
 		assert.equal(generatorSlotStatus().active, 0);
 
 		await fixture.call("bg", "breeze-tts-maker", { run_in_background: true });
-		fixture.result("bg", "breeze-tts-maker", { run_in_background: true });
+		fixture.result("bg", "breeze-tts-maker", { run_in_background: true }, false, {
+			status: "background",
+			agentId: "job-bg",
+		});
 		assert.equal(generatorSlotStatus().active, 1, "a background job keeps its slot");
 		fixture.eventHandlers.get("subagents:failed")({ type: "breeze-tts-maker", id: "job-bg" });
 		assert.equal(generatorSlotStatus().active, 0);
+	} finally {
+		fixture.reset();
+	}
+});
+
+test("a completion arriving before the Agent result releases its own slot", async () => {
+	const fixture = createFixture();
+	try {
+		await fixture.call("early", "svg-maker", { run_in_background: true });
+		fixture.eventHandlers.get("subagents:completed")({ type: "svg-maker", id: "job-early" });
+		assert.equal(generatorSlotStatus().active, 1);
+
+		fixture.result("early", "svg-maker", { run_in_background: true }, false, {
+			status: "background",
+			agentId: "job-early",
+		});
+		assert.equal(generatorSlotStatus().active, 0);
+	} finally {
+		fixture.reset();
+	}
+});
+
+test("a background result without an agent ID keeps its slot and reports the mismatch", async () => {
+	const fixture = createFixture();
+	try {
+		await fixture.call("missing-id", "svg-maker", { run_in_background: true });
+		fixture.result("missing-id", "svg-maker", { run_in_background: true }, false, { status: "background" });
+		assert.equal(generatorSlotStatus().active, 1);
+		assert.match(fixture.notifications.join("\n"), /Could not match the svg-maker background job/);
 	} finally {
 		fixture.reset();
 	}
@@ -137,9 +192,9 @@ test("shutdown releases every held slot", async () => {
 test("an aborted waiter leaves the queue without consuming a slot", async () => {
 	process.env.PI_GENERATOR_CONCURRENCY = "1";
 	try {
-		const release = await acquireGeneratorSlot();
+		const release = await acquireGeneratorSlot("breeze-tts-maker");
 		const controller = new AbortController();
-		const queued = acquireGeneratorSlot(controller.signal);
+		const queued = acquireGeneratorSlot("svg-maker", controller.signal);
 		assert.equal(generatorSlotStatus().waiting, 1);
 		controller.abort();
 		await assert.rejects(queued, /Cancelled while waiting/);
