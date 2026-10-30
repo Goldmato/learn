@@ -28,9 +28,6 @@ export interface PersistedMasteryEvidence extends MasteryEvidence {
 	recordedAt: number;
 }
 
-const MASTERY_EVIDENCE_START = "<!-- pi-mastery-evidence:start v1 -->";
-const MASTERY_EVIDENCE_END = "<!-- pi-mastery-evidence:end v1 -->";
-
 export function findVaultRootForNote(notePath: string): string {
 	const realNotePath = fs.realpathSync(notePath);
 	if (!fs.statSync(realNotePath).isFile()) throw new Error(`Linked md-log path is not a file: ${notePath}`);
@@ -234,97 +231,6 @@ export function updateRelatedFrontmatter(markdown: string, linkTargets: string[]
 	return `${markdown.slice(0, bounds.start)}${updatedFrontmatter}${markdown.slice(bounds.end)}`;
 }
 
-export function extractMasteryEvidence(markdown: string, conceptId?: string): PersistedMasteryEvidence[] {
-	const evidence: PersistedMasteryEvidence[] = [];
-	for (const match of markdown.matchAll(/<!-- pi-mastery-evidence:v1 (\{[^\r\n]*\}) -->/g)) {
-		let value: unknown;
-		try {
-			value = JSON.parse(match[1]);
-		} catch {
-			throw new Error("A mastery evidence marker contains invalid JSON.");
-		}
-		if (
-			typeof value !== "object" || value === null ||
-			typeof (value as Record<string, unknown>).interactionId !== "string" ||
-			typeof (value as Record<string, unknown>).conceptId !== "string" ||
-			typeof (value as Record<string, unknown>).score !== "number" ||
-			typeof (value as Record<string, unknown>).confidence !== "number" ||
-			typeof (value as Record<string, unknown>).recordedAt !== "number"
-		) throw new Error("A mastery evidence marker has an unsupported shape.");
-		const entry = value as Record<string, unknown>;
-		if (conceptId !== undefined && entry.conceptId !== conceptId) continue;
-		evidence.push({
-			interactionId: entry.interactionId as string,
-			conceptId: entry.conceptId as string,
-			score: entry.score as number,
-			confidence: entry.confidence as number,
-			recordedAt: entry.recordedAt as number,
-			reasoningSummary: typeof entry.reasoningSummary === "string" ? entry.reasoningSummary : undefined,
-		});
-	}
-	return evidence;
-}
-
-export function updateMasteryEvidence(markdown: string, evidence: PersistedMasteryEvidence[]): string {
-	const unique = new Map<string, PersistedMasteryEvidence>();
-	for (const item of evidence) {
-		const previous = unique.get(item.interactionId);
-		if (previous && (
-			previous.conceptId !== item.conceptId ||
-			previous.score !== item.score ||
-			previous.confidence !== item.confidence
-		)) throw new Error(`Conflicting mastery evidence for interaction "${item.interactionId}".`);
-		if (!previous) unique.set(item.interactionId, item);
-	}
-	const ordered = [...unique.values()].sort((left, right) =>
-		left.recordedAt - right.recordedAt || left.interactionId.localeCompare(right.interactionId),
-	);
-	const block = [
-		MASTERY_EVIDENCE_START,
-		...ordered.map((item) => `<!-- pi-mastery-evidence:v1 ${JSON.stringify(item)} -->`),
-		MASTERY_EVIDENCE_END,
-	].join("\n");
-	const start = markdown.indexOf(MASTERY_EVIDENCE_START);
-	const end = markdown.indexOf(MASTERY_EVIDENCE_END);
-	if ((start < 0) !== (end < 0) || (start >= 0 && end < start)) {
-		throw new Error("Linked note has malformed mastery evidence markers; refusing to overwrite them.");
-	}
-	if (start >= 0) {
-		const afterEnd = end + MASTERY_EVIDENCE_END.length;
-		if (markdown.indexOf(MASTERY_EVIDENCE_START, start + MASTERY_EVIDENCE_START.length) >= 0 ||
-			markdown.indexOf(MASTERY_EVIDENCE_END, afterEnd) >= 0) {
-			throw new Error("Linked note has duplicate mastery evidence blocks; refusing to overwrite them.");
-		}
-		return `${markdown.slice(0, start)}${block}${markdown.slice(afterEnd)}`;
-	}
-	const separator = markdown.endsWith("\n") ? "" : "\n";
-	return `${markdown}${separator}\n${block}\n`;
-}
-
-export function mergeMasteryEvidence(
-	evidence: PersistedMasteryEvidence[],
-): { record: MasteryRecord; interactionIds: string[] } {
-	const byId = new Map<string, PersistedMasteryEvidence>();
-	for (const item of evidence) {
-		const previous = byId.get(item.interactionId);
-		if (previous && (
-			previous.conceptId !== item.conceptId ||
-			previous.score !== item.score ||
-			previous.confidence !== item.confidence
-		)) throw new Error(`Conflicting mastery evidence for interaction "${item.interactionId}".`);
-		if (!previous) byId.set(item.interactionId, item);
-	}
-	const ordered = [...byId.values()].sort((left, right) =>
-		left.recordedAt - right.recordedAt || left.interactionId.localeCompare(right.interactionId),
-	);
-	if (ordered.length === 0) throw new Error("No mastery evidence is available to merge.");
-	let record: MasteryRecord | undefined;
-	for (const item of ordered) {
-		record = updateTeachingMastery(record, item);
-	}
-	return { record: record!, interactionIds: ordered.map((item) => item.interactionId) };
-}
-
 function sameMasteryRecord(left: MasteryRecord, right: MasteryRecord): boolean {
 	return left.score === right.score &&
 		left.evidenceCount === right.evidenceCount &&
@@ -333,6 +239,18 @@ function sameMasteryRecord(left: MasteryRecord, right: MasteryRecord): boolean {
 		left.lastInteractionId === right.lastInteractionId &&
 		left.confidence === right.confidence &&
 		left.reasoningSummary === right.reasoningSummary;
+}
+
+/**
+ * Legacy notes may carry an HTML evidence block written by an earlier version. The
+ * frontmatter is the only mastery store, so strip every such block (including
+ * duplicates) and any blank lines it leaves behind. Prose is never touched.
+ */
+export function stripLegacyMasteryEvidence(markdown: string): string {
+	const blockPattern = /<!-- pi-mastery-evidence:start v1 -->[\s\S]*?<!-- pi-mastery-evidence:end v1 -->[ \t]*\r?\n?/g;
+	const stripped = markdown.replace(blockPattern, "");
+	if (stripped === markdown) return markdown;
+	return stripped.replace(/\n{3,}/g, "\n\n");
 }
 
 export function syncMasteryAcrossVault(
@@ -364,61 +282,41 @@ export function syncMasteryAcrossVault(
 	}
 	if (matchingNotes.length === 0) throw new Error(`No linked note found for mastery concept "${conceptId}".`);
 
+	// Frontmatter is the only store: each note holds the latest aggregate record.
 	const documents = matchingNotes.map((note) => {
 		const markdown = fs.readFileSync(note.filePath, "utf-8");
 		return { note, markdown, record: readMasteryFrontmatter(markdown).get(conceptId) };
 	});
 	const records = documents.flatMap((document) => document.record ? [document.record] : []);
 	const sameRecords = records.length === 0 || records.every((record) => sameMasteryRecord(record, records[0]));
-	const allHistoriesComplete = documents.every((document) => {
-		const evidenceIds = extractMasteryEvidence(document.markdown, conceptId).map((item) => item.interactionId);
-		if (!document.record) return evidenceIds.length === 0;
-		const uniqueIds = new Set(evidenceIds);
-		return evidenceIds.length === uniqueIds.size && uniqueIds.size === document.record.evidenceCount;
-	});
-
-	let evidence = documents.flatMap((document) => extractMasteryEvidence(document.markdown, conceptId));
-	if (options.evidence) evidence.push(options.evidence);
-	let record: MasteryRecord;
-	let previousRecord: MasteryRecord | undefined;
-	let mergedEvidenceCount: number;
-	if (allHistoriesComplete && evidence.length > 0) {
-		const previousEvidence = options.evidence
-			? evidence.filter((item) => item.interactionId !== options.evidence?.interactionId)
-			: evidence;
-		if (previousEvidence.length > 0) previousRecord = mergeMasteryEvidence(previousEvidence).record;
-		const merged = mergeMasteryEvidence(evidence);
-		record = merged.record;
-		mergedEvidenceCount = merged.interactionIds.length;
-	} else if (options.evidence && sameRecords) {
-		const base = records[0] ?? options.previousRecord;
-		if (base && options.previousRecord && !sameMasteryRecord(base, options.previousRecord)) {
-			throw new Error(`Mastery baseline for "${conceptId}" changed before the evidence could be synchronized.`);
-		}
-		previousRecord = base;
-		record = base
-			? updateTeachingMastery(base, options.evidence)
-			: options.nextRecord ?? updateTeachingMastery(undefined, options.evidence);
-		mergedEvidenceCount = record.evidenceCount;
-	} else if (!options.evidence && sameRecords && records.length > 0) {
-		record = records[0];
-		previousRecord = record;
-		mergedEvidenceCount = record.evidenceCount;
-	} else {
+	if (!sameRecords) {
 		throw new Error(
-			`Mastery records for "${conceptId}" conflict, but the notes do not contain complete interaction evidence to merge safely. No related note was changed.`,
+			`Mastery records for "${conceptId}" differ between linked notes, and the frontmatter alone cannot be merged safely. No related note was changed.`,
 		);
 	}
 
-	if (options.nextRecord && options.evidence && sameRecords && allHistoriesComplete &&
-		record.evidenceCount < options.nextRecord.evidenceCount) {
-		throw new Error(`Merged mastery evidence for "${conceptId}" is incomplete; no related note was changed.`);
+	const base = records[0];
+	let record: MasteryRecord;
+	if (options.evidence) {
+		if (base && options.previousRecord && !sameMasteryRecord(base, options.previousRecord)) {
+			throw new Error(`Mastery baseline for "${conceptId}" changed before the evidence could be synchronized.`);
+		}
+		record = base
+			? updateTeachingMastery(base, options.evidence)
+			: options.nextRecord ?? updateTeachingMastery(undefined, options.evidence);
+		if (options.nextRecord && record.evidenceCount < options.nextRecord.evidenceCount) {
+			throw new Error(`Merged mastery evidence for "${conceptId}" is incomplete; no related note was changed.`);
+		}
+	} else {
+		if (!base) throw new Error(`No mastery record exists for "${conceptId}" in the linked notes.`);
+		record = base;
 	}
 
 	const targets = matchingNotes.map((note) => note.linkTarget);
 	const staged = documents.map(({ note, markdown }) => {
-		let updated = updateMasteryFrontmatter(markdown, conceptId, record);
-		updated = updateMasteryEvidence(updated, evidence);
+		// Remove legacy HTML evidence blocks: the frontmatter is the sole store now.
+		let updated = stripLegacyMasteryEvidence(markdown);
+		updated = updateMasteryFrontmatter(updated, conceptId, record);
 		updated = updateRelatedFrontmatter(updated, targets.filter((target) => target !== note.linkTarget));
 		return { filePath: note.filePath, updated, original: markdown };
 	});
@@ -427,9 +325,9 @@ export function syncMasteryAcrossVault(
 	}
 	return {
 		record,
-		previousRecord,
+		previousRecord: base,
 		files: staged.filter((item) => item.updated !== item.original).map((item) => item.filePath),
-		evidenceCount: mergedEvidenceCount,
+		evidenceCount: record.evidenceCount,
 	};
 }
 

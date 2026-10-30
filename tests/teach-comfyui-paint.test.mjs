@@ -19,6 +19,7 @@ function createPaintFixture(agentOutcome = {
 	const entries = [
 		{ id: "session", type: "session" },
 		{ id: "mdlog", parentId: "session", type: "custom", customType: "md-log", data: { file: notePath } },
+		{ id: "anchor", parentId: "mdlog", type: "message", message: { role: "assistant", content: [{ type: "text", text: "Existing note text." }] } },
 	];
 	const toolCalls = [];
 	const registeredTools = new Map();

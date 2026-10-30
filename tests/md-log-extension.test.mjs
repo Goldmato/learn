@@ -283,7 +283,7 @@ test("new or forked session reports the restored md-log target", async () => {
 	}
 });
 
-test("fresh linked md-log prompts once and persists the session Breeze voice preset", async () => {
+test("linking a fresh note defers Breeze voice selection until audio is requested", async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-md-log-breeze-voice-"));
 	const notePath = path.join(root, "lesson.md");
 	const wavs = path.join(root, "voice", "wavs");
@@ -345,15 +345,10 @@ test("fresh linked md-log prompts once and persists the session Breeze voice pre
 
 		await handlers.get("session_start")({ reason: "new" }, ctx);
 		await handlers.get("session_start")({ reason: "new" }, ctx);
-		assert.equal(selections.length, 1);
-		assert.equal(selections[0].title, "Breeze TTS voice for this session");
-		assert.match(selections[0].options[0], /no voice cloning/);
-		assert.match(selections[0].options[1], /Warm Narrator.*voice clone/);
+		assert.equal(selections.length, 0);
 		const voiceEntries = entries.filter((entry) => entry.customType === "breeze-voice-preset");
-		assert.equal(voiceEntries.length, 1);
-		assert.equal(voiceEntries[0].data.preset.id, "narrator");
-		assert.equal(voiceEntries[0].data.preset.mode, "clone");
-		assert.ok(notifications.some(({ message }) => message === "Breeze TTS session voice: Warm Narrator."));
+		assert.equal(voiceEntries.length, 0);
+		assert.doesNotMatch(fs.readFileSync(notePath, "utf-8"), /breeze-voice-preset:/);
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
 	}
@@ -408,11 +403,12 @@ test("linking a mastery note adds related wikilinks and sends vault mastery cont
 		await commands.get("md-log")(notePath, ctx);
 		assert.match(fs.readFileSync(notePath, "utf-8"), /related:\n  - "\[\[References\/related\]\]"/);
 		assert.match(fs.readFileSync(relatedPath, "utf-8"), /related:\n  - "\[\[Lessons\/active\]\]"/);
-		assert.equal(messages.length, 1);
-		assert.equal(messages[0].options.triggerTurn, false);
-		assert.match(messages[0].message.content, /shared-concept/);
-		assert.match(messages[0].message.content, /Related lesson/);
-		assert.match(messages[0].message.content, /"score":6/);
+		// Linking also imports the note's own prose as context, so pick the mastery message.
+		const mastery = messages.filter(({ message }) => /shared-concept/.test(message.content));
+		assert.equal(mastery.length, 1);
+		assert.equal(mastery[0].options.triggerTurn, false);
+		assert.match(mastery[0].message.content, /Related lesson/);
+		assert.match(mastery[0].message.content, /"score":6/);
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
 	}
@@ -498,7 +494,11 @@ test("extension links a note, updates live quiz rounds, and preserves note conte
 		}, ctx);
 
 		const persisted = fs.readFileSync(notePath, "utf-8");
-		assert.ok(persisted.startsWith(initialNote));
+		// The managed section moves above authored prose so that prose is addressable
+		// as a placement anchor, and it renders once inside the section.
+		assert.ok(persisted.startsWith(TRANSCRIPT_START));
+		assert.equal((persisted.match(/# Existing note/g) || []).length, 1);
+		assert.match(persisted, /Keep this text\./);
 		assert.match(persisted, /^# Quiz: Choosing the Right Answer/m);
 		assert.match(persisted, /## Round 1: Choosing the Right Answer/);
 		assert.match(persisted, /1\. ==🟢 Right==/);
@@ -640,7 +640,8 @@ test("image attachment tool results persist a single embed in md-log", async () 
 		const persisted = fs.readFileSync(notePath, "utf-8");
 		assert.ok(persisted.includes(`![[${filename}]]`));
 		assert.equal((persisted.match(new RegExp(`!\\[\\[${filename}\\]\\]`, "g")) || []).length, 1);
-		assert.ok(persisted.startsWith("# Lesson\n\nKeep authored text.\n"));
+		assert.ok(persisted.startsWith(TRANSCRIPT_START));
+		assert.match(persisted, /# Lesson\n\nKeep authored text\./);
 	} finally {
 		fs.rmSync(vaultRoot, { recursive: true, force: true });
 	}

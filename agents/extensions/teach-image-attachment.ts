@@ -93,14 +93,6 @@ export default function teachImageAttachment(pi: ExtensionAPI) {
 					}
 				}
 
-				const marker = `%%pi-comfyui-image:${markerId}%%`;
-				const noteContents = fs.readFileSync(notePath, "utf-8");
-				const firstMarker = noteContents.indexOf(marker);
-				if (firstMarker < 0) throw new Error(`Image placeholder was not found in the linked note: ${markerId}`);
-				if (noteContents.indexOf(marker, firstMarker + marker.length) >= 0) {
-					throw new Error(`Image placeholder occurs more than once in the linked note: ${markerId}`);
-				}
-
 				if (errorMessage) {
 					removeImagePlaceholder(notePath, markerId);
 					pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, { markerId, status: "failed", error: errorMessage });

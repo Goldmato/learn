@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
-	extractManagedTranscript,
+	transcriptContainsAnchor,
 	TEACH_IMAGE_PLACEMENT_ENTRY,
 } from "../lib/md-log-format.ts";
 import {
@@ -82,13 +82,8 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 				const resolvedNote = path.isAbsolute(linkedNote) ? linkedNote : path.resolve(ctx.cwd, linkedNote);
 				if (!fs.statSync(resolvedNote).isFile()) throw new Error(`Linked md-log path is not a file: ${resolvedNote}`);
 				findVaultRoot(resolvedNote);
-				const managedTranscript = extractManagedTranscript(fs.readFileSync(resolvedNote, "utf-8"));
-				const anchorIndex = managedTranscript?.indexOf(insertAfter) ?? -1;
-				if (anchorIndex < 0) {
+				if (!transcriptContainsAnchor(ctx.sessionManager.getEntries(), insertAfter)) {
 					throw new Error("Image insertion anchor must be exact text from the managed linked-note transcript.");
-				}
-				if (managedTranscript?.indexOf(insertAfter, anchorIndex + insertAfter.length) >= 0) {
-					throw new Error("Image insertion anchor occurs more than once in the managed transcript; choose a more specific passage.");
 				}
 				const id = randomUUID();
 				insertImagePlaceholder(resolvedNote, id, insertAfter);

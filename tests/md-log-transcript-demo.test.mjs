@@ -22,7 +22,7 @@ test("demo markdown is generated from session backfill with expanded teaching fo
 		const end = note.indexOf(`\n${TRANSCRIPT_END}`, start);
 		assert.notEqual(start, -1);
 		assert.notEqual(end, -1);
-		const managedTranscript = note.slice(start + TRANSCRIPT_START.length + 1, end);
+		const managedTranscript = note.slice(start + TRANSCRIPT_START.length + 1, end).replace(/\n$/, "");
 		assert.equal(managedTranscript, generated.transcript);
 
 		assert.match(managedTranscript, /^# Lesson: From Definitions to Good Claims$/m);

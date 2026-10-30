@@ -210,6 +210,11 @@ export function renameGeneratedImage(
 	throw new Error(`Could not find an available generated image name for "${slug}".`);
 }
 
+/**
+ * Placement markers are a projection of the transcript, not a note edit: the
+ * renderer owns every position inside the managed section, so writing here too
+ * would only drift. These helpers keep their signatures and validate arguments.
+ */
 export function insertImagePlaceholder(notePath: string, markerId: string, insertAfter: string): string {
 	if (!/^[a-f0-9-]{36}$/i.test(markerId)) throw new Error("Image placeholder ID must be a UUID.");
 	const anchor = insertAfter.trim();
@@ -227,10 +232,6 @@ export function insertImagePlaceholder(notePath: string, markerId: string, inser
 	if (anchorIndex < 0 || anchorIndex + anchor.length > managedEnd) {
 		throw new Error("Image insertion anchor was not found in the managed linked-note transcript; choose exact existing transcript text.");
 	}
-	const nextAnchorIndex = existing.indexOf(anchor, anchorIndex + anchor.length);
-	if (nextAnchorIndex >= 0 && nextAnchorIndex < managedEnd) {
-		throw new Error("Image insertion anchor occurs more than once in the managed transcript; choose a more specific passage.");
-	}
 	const insertAt = anchorIndex + anchor.length;
 	const before = existing.slice(0, insertAt);
 	const after = existing.slice(insertAt);
@@ -246,9 +247,6 @@ export function removeImagePlaceholder(notePath: string, markerId: string): void
 	const existing = fs.readFileSync(notePath, "utf-8");
 	const firstIndex = existing.indexOf(marker);
 	if (firstIndex < 0) return;
-	if (existing.indexOf(marker, firstIndex + marker.length) >= 0) {
-		throw new Error(`Image placeholder occurs more than once in the linked note: ${markerId}`);
-	}
 	const lineStart = existing.lastIndexOf("\n", firstIndex - 1) + 1;
 	const lineEnd = existing.indexOf("\n", firstIndex + marker.length);
 	const removeStart = lineStart === firstIndex ? lineStart : firstIndex;
@@ -280,9 +278,6 @@ export function replaceImagePlaceholder(
 	const existing = fs.readFileSync(notePath, "utf-8");
 	const firstIndex = existing.indexOf(marker);
 	if (firstIndex < 0) throw new Error(`Image placeholder was not found in the linked note: ${markerId}`);
-	if (existing.indexOf(marker, firstIndex + marker.length) >= 0) {
-		throw new Error(`Image placeholder occurs more than once in the linked note: ${markerId}`);
-	}
 	const imageBlock = `${formatImageNote(title, safeCaption)}\n\n![[${pathParts.join("/")}]]`;
 	fs.writeFileSync(
 		notePath,

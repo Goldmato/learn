@@ -11,14 +11,18 @@ import * as path from "node:path";
 import {
 	buildBackfill,
 	extractManagedTranscript,
-	renderTranscriptWithImagePlacements,
+	renderTranscriptWithPlacements,
 	replaceManagedTranscript,
 	renderTranscript,
 	isNonSubstantiveAssistantUpdate,
 	stripSkillBlocks,
 	TRANSCRIPT_END,
+	placeManagedSectionAtTop,
 	TRANSCRIPT_START,
 	TEACH_ATTACH_IMAGE_TOOL,
+	TEACH_BREEZE_TTS_TOOL,
+	TEACH_COMFYUI_PAINT_TOOL,
+	TEACH_VISUAL_TOOL,
 	TEACH_FREE_RESPONSE_TOOL,
 	TEACH_RECORD_ATTEMPT_TOOL,
 	type TranscriptBlock,
@@ -33,12 +37,6 @@ import {
 	updateRelatedFrontmatter,
 } from "../lib/mastery-vault.ts";
 import { cancelAnswerModal } from "../lib/answer-modal.ts";
-import {
-	BREEZE_VOICE_PRESET_ENTRY,
-	getSelectedBreezeVoicePreset,
-	loadBreezeVoicePresets,
-	STANDARD_BREEZE_VOICE_PRESET,
-} from "../lib/breeze-voice-presets.ts";
 
 const QA_TOOLS = new Set(["quiz", "ask_user_question"]);
 
@@ -125,7 +123,7 @@ export default function mdLog(pi: ExtensionAPI) {
 		if (!stat.isFile()) throw new Error(`Not a file: ${logFile}`);
 		const existing = fs.readFileSync(logFile, "utf-8");
 		const entries = ctx.sessionManager.getEntries();
-		const rendered = renderTranscriptWithImagePlacements(renderTranscript(transcriptBlocks), entries, logFile);
+		const rendered = renderTranscriptWithPlacements(transcriptBlocks, entries, logFile, existing);
 		const updated = replaceManagedTranscript(existing, rendered);
 		fs.writeFileSync(logFile, updated, "utf-8");
 	}
@@ -192,22 +190,37 @@ export default function mdLog(pi: ExtensionAPI) {
 	}
 
 	async function importPriorTranscript(filePath: string, ctx: any): Promise<boolean> {
+		if (typeof pi.appendEntry !== "function") return false;
 		if (transcriptBlocks.some((block) =>
 			block.kind === "markdown" && path.resolve(block.file) === filePath)) return false;
 
-		const previousTranscript = extractManagedTranscript(fs.readFileSync(filePath, "utf-8"));
-		if (!previousTranscript || previousTranscript.trim() === renderTranscript(transcriptBlocks).trim()) return false;
+		const noteContents = fs.readFileSync(filePath, "utf-8");
+		const previousTranscript = extractManagedTranscript(noteContents);
+		// Prose the user wrote outside the managed section is part of the note's
+		// content, so it must be addressable as placement anchors too. Import it
+		// once, on link, and let the renderer own it from then on.
+		const withoutFrontmatter = noteContents.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+		const managedStart = withoutFrontmatter.indexOf(TRANSCRIPT_START);
+		const managedEnd = withoutFrontmatter.indexOf(TRANSCRIPT_END);
+		const outsideProse = (managedStart >= 0 && managedEnd > managedStart
+			? `${withoutFrontmatter.slice(0, managedStart)}\n\n${withoutFrontmatter.slice(managedEnd + TRANSCRIPT_END.length)}`
+			: withoutFrontmatter).trim();
+		const imported = [previousTranscript?.trim(), outsideProse].filter(Boolean).join("\n\n");
+		if (!imported || imported === renderTranscript(transcriptBlocks).trim()) return false;
+		const previousTranscriptText = imported;
 
-		await pi.sendMessage({
-			customType: "md-log-context",
-			content: [
-				`The following is the prior transcript from the linked note "${path.basename(filePath)}".`,
-				"Use it as conversation context and continue from it; do not treat it as a request to rewrite or replace the note.",
-				"",
-				previousTranscript,
-			].join("\n"),
-		}, { triggerTurn: false });
-		pi.appendEntry("md-log-import", { file: filePath, markdown: previousTranscript });
+		if (typeof pi.sendMessage === "function") {
+			await pi.sendMessage({
+				customType: "md-log-context",
+				content: [
+					`The following is the prior transcript from the linked note "${path.basename(filePath)}".`,
+					"Use it as conversation context and continue from it; do not treat it as a request to rewrite or replace the note.",
+					"",
+					previousTranscriptText,
+				].join("\n"),
+			}, { triggerTurn: false });
+		}
+		pi.appendEntry("md-log-import", { file: filePath, markdown: previousTranscriptText });
 		loadBackfill(ctx);
 		return true;
 	}
@@ -240,66 +253,16 @@ export default function mdLog(pi: ExtensionAPI) {
 		return active;
 	}
 
-	async function chooseBreezeVoicePresetForFreshNote(filePath: string, ctx: any): Promise<void> {
-		try {
-			if (getSelectedBreezeVoicePreset(ctx.sessionManager.getEntries())) return;
-		} catch (error) {
-			ctx.ui.notify(`Breeze TTS could not restore the session voice preset: ${errorMessage(error)}`, "error");
-			return;
-		}
-
-		let markdown: string;
-		try {
-			markdown = fs.readFileSync(filePath, "utf-8");
-		} catch (error) {
-			ctx.ui.notify(`Breeze TTS could not inspect the linked note for voice selection: ${errorMessage(error)}`, "error");
-			return;
-		}
-		const managedTranscript = extractManagedTranscript(markdown);
-		const isFresh = noteBodyIsEmpty(markdown) || (managedTranscript !== undefined && !managedTranscript.trim());
-		if (!isFresh) return;
-
-		let presets: ReturnType<typeof loadBreezeVoicePresets>["presets"] = [];
-		try {
-			const manifestPath = path.join(ctx.cwd, "breeze-voices.json");
-			const loaded = loadBreezeVoicePresets(manifestPath);
-			presets = loaded.presets;
-			for (const diagnostic of loaded.diagnostics) ctx.ui.notify(`Breeze voice manifest: ${diagnostic}`, "warning");
-		} catch (error) {
-			ctx.ui.notify(`Breeze TTS could not load its voice manifest: ${errorMessage(error)}`, "error");
-		}
-
-		let selected = STANDARD_BREEZE_VOICE_PRESET;
-		if (presets.length > 0) {
-			const options = [
-				`${STANDARD_BREEZE_VOICE_PRESET.name} — no voice cloning`,
-				...presets.map((preset) => `${preset.name} (${preset.id}) — voice clone`),
-			];
-			if (typeof ctx.ui.select !== "function") {
-				ctx.ui.notify("Breeze TTS voice selection is unavailable; using the standard non-clone voice.", "warning");
-			} else {
-				try {
-					const choice = await ctx.ui.select("Breeze TTS voice for this session", options);
-					const optionIndex = options.indexOf(choice ?? "");
-					if (optionIndex > 0) selected = presets[optionIndex - 1];
-					else if (optionIndex < 0) ctx.ui.notify("Voice selection was cancelled; using the standard non-clone voice.", "warning");
-				} catch (error) {
-					ctx.ui.notify(`Breeze TTS voice selection failed; using the standard non-clone voice: ${errorMessage(error)}`, "error");
-				}
-			}
-		}
-		pi.appendEntry(BREEZE_VOICE_PRESET_ENTRY, { preset: selected, linkedNotePath: filePath });
-		if (presets.length === 0) {
-			ctx.ui.notify(`Breeze TTS session voice: ${selected.name}. Add clone presets in ${path.join(ctx.cwd, "breeze-voices.json")}.`, "info");
-		} else if (selected.mode === "clone") {
-			ctx.ui.notify(`Breeze TTS session voice: ${selected.name}.`, "info");
-		}
-	}
-
 	async function linkNote(filePath: string, ctx: any): Promise<void> {
 		logFile = filePath;
 		pi.appendEntry("md-log", { file: filePath });
 		try {
+			// Prose above the managed markers is unreachable as an anchor, so pull the
+			// section above it before importing. The import then reads it as managed
+			// content and the renderer emits it once.
+			const existingNote = fs.readFileSync(filePath, "utf-8");
+			const placedNote = placeManagedSectionAtTop(existingNote);
+			if (placedNote !== existingNote) fs.writeFileSync(filePath, placedNote, "utf-8");
 			let result = loadBackfill(ctx);
 			if (await importPriorTranscript(filePath, ctx)) result = loadBackfill(ctx);
 			await importEndLessonState(filePath, ctx);
@@ -310,7 +273,6 @@ export default function mdLog(pi: ExtensionAPI) {
 			ctx.ui.notify(`Linked: ${filePath} (${result.entries} entries backfilled)`, "success");
 			ctx.ui.notify(`md-log status: linked to ${filePath}`, "info");
 			for (const diagnostic of result.diagnostics) ctx.ui.notify(`md-log backfill: ${diagnostic}`, "warning");
-			await chooseBreezeVoicePresetForFreshNote(filePath, ctx);
 		} catch (error) {
 			logFile = null;
 			ctx.ui.setStatus("md-log", undefined);
@@ -488,9 +450,6 @@ export default function mdLog(pi: ExtensionAPI) {
 			await refreshMasteryContext(logFile, ctx);
 			for (const diagnostic of (imported ? loadBackfill(ctx) : result).diagnostics) {
 				ctx.ui.notify(`md-log backfill: ${diagnostic}`, "warning");
-			}
-			if (event.reason === "new" || event.reason === "fork") {
-				await chooseBreezeVoicePresetForFreshNote(logFile, ctx);
 			}
 			if (event.reason !== "reload") ctx.ui.notify(`md-log status: linked to ${logFile}`, "info");
 		} catch (error) {
@@ -680,8 +639,16 @@ export default function mdLog(pi: ExtensionAPI) {
 		await syncTranscript(ctx);
 	});
 
+	// Placement markers are rendered from the transcript, so a dispatch has to
+	// re-sync for the pending marker to become visible.
+	const PLACEMENT_TOOLS = new Set([TEACH_BREEZE_TTS_TOOL, TEACH_COMFYUI_PAINT_TOOL, TEACH_VISUAL_TOOL]);
+
 	pi.on("tool_result", async (event, ctx) => {
 		if (!logFile || !isRecord(event)) return;
+		if (typeof event.toolName === "string" && PLACEMENT_TOOLS.has(event.toolName)) {
+			await syncTranscript(ctx);
+			return;
+		}
 		if (event.toolName === TEACH_ATTACH_IMAGE_TOOL) {
 			const callId = typeof event.toolCallId === "string" ? event.toolCallId : "";
 			const details = isRecord(event.details) ? event.details : {};
