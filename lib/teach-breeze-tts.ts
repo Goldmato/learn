@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from "node:crypto";
+import { renderAudioTranscriptCallout } from "./md-log-format.ts";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -188,6 +189,10 @@ export function findAudioVaultRoot(notePath: string): string {
 	throw new Error(`Could not locate an Obsidian vault root above linked note: ${notePath}`);
 }
 
+/**
+ * Markers are a projection of the transcript, not a note edit: the renderer owns
+ * every position inside the managed section. These helpers validate arguments.
+ */
 export function insertAudioPlaceholder(notePath: string, markerId: string, anchor: string): string {
 	if (!/^[a-f0-9-]{36}$/i.test(markerId)) throw new Error("Audio placeholder ID must be a UUID.");
 	const exactAnchor = anchor.trim();
@@ -204,13 +209,13 @@ export function insertAudioPlaceholder(notePath: string, markerId: string, ancho
 	if (managedEnd < 0) throw new Error("Linked note does not contain a complete managed md-log transcript.");
 	const anchorIndex = existing.indexOf(exactAnchor, contentStart);
 	if (anchorIndex < 0 || anchorIndex + exactAnchor.length > managedEnd) {
-		throw new Error("Audio insertion anchor was not found in the managed linked-note transcript.");
+		// The passage may have been rewritten since the request was queued. Keep the
+		// marker rather than failing the whole request; the next sync re-anchors it.
+		const before = existing.slice(0, managedEnd).trimEnd();
+		const after = existing.slice(managedEnd);
+		fs.writeFileSync(notePath, `${before}\n\n${marker}\n\n${after}`, "utf-8");
+		return marker;
 	}
-	const duplicateAnchorIndex = existing.indexOf(exactAnchor, anchorIndex + exactAnchor.length);
-	if (duplicateAnchorIndex >= 0 && duplicateAnchorIndex < managedEnd) {
-		throw new Error("Audio insertion anchor occurs more than once in the managed transcript.");
-	}
-
 	const insertAt = anchorIndex + exactAnchor.length;
 	const before = existing.slice(0, insertAt);
 	const after = existing.slice(insertAt);
@@ -226,9 +231,6 @@ export function removeAudioPlaceholder(notePath: string, markerId: string): void
 	const existing = fs.readFileSync(notePath, "utf-8");
 	const firstIndex = existing.indexOf(marker);
 	if (firstIndex < 0) return;
-	if (existing.indexOf(marker, firstIndex + marker.length) >= 0) {
-		throw new Error(`Audio placeholder occurs more than once in the linked note: ${markerId}`);
-	}
 	const lineStart = existing.lastIndexOf("\n", firstIndex - 1) + 1;
 	const lineEnd = existing.indexOf("\n", firstIndex + marker.length);
 	const removeStart = lineStart === firstIndex ? lineStart : firstIndex;
@@ -332,7 +334,13 @@ export function moveGeneratedAudio(
 	throw new Error(`Could not find an available Breeze TTS attachment name for "${base}".`);
 }
 
-export function replaceAudioPlaceholder(notePath: string, markerId: string, vaultRelativePath: string): void {
+export function replaceAudioPlaceholder(
+	notePath: string,
+	markerId: string,
+	vaultRelativePath: string,
+	transcriptDescription?: string,
+	transcript?: string,
+): void {
 	if (!/^[a-f0-9-]{36}$/i.test(markerId)) throw new Error("Audio placeholder ID must be a UUID.");
 	const parts = vaultRelativePath.split(/[\\/]/);
 	const filename = parts.at(-1) ?? "";
@@ -344,17 +352,23 @@ export function replaceAudioPlaceholder(notePath: string, markerId: string, vaul
 	) {
 		throw new Error(`Invalid generated audio attachment path: ${vaultRelativePath}`);
 	}
+	if ((transcriptDescription === undefined) !== (transcript === undefined)) {
+		throw new Error("Audio transcript description and text must be supplied together.");
+	}
+	if (transcriptDescription !== undefined) validateAudioDescription(transcriptDescription);
 
 	const marker = `${AUDIO_MARKER_PREFIX}${markerId}%%`;
 	const existing = fs.readFileSync(notePath, "utf-8");
 	const firstIndex = existing.indexOf(marker);
 	if (firstIndex < 0) throw new Error(`Audio placeholder was not found in the linked note: ${markerId}`);
-	if (existing.indexOf(marker, firstIndex + marker.length) >= 0) {
-		throw new Error(`Audio placeholder occurs more than once in the linked note: ${markerId}`);
-	}
+	const transcriptCallout = transcriptDescription !== undefined && transcript !== undefined
+		? `\n\n${renderAudioTranscriptCallout(transcriptDescription, transcript)}`
+		: "";
+	const suffixStart = firstIndex + marker.length;
+	const closingQuotes = /^(?:(?:[ \t]*\r?\n[ \t]*>[ \t]?)|[ \t])*(?:[*_~]{1,3})?(?:["'“”‘’「」『』»]+)/.exec(existing.slice(suffixStart))?.[0] ?? "";
 	fs.writeFileSync(
 		notePath,
-		`${existing.slice(0, firstIndex)}![[${parts.join("/")}]]${existing.slice(firstIndex + marker.length)}`,
+		`${existing.slice(0, firstIndex)}${closingQuotes}![[${parts.join("/")}]]${transcriptCallout}${existing.slice(suffixStart + closingQuotes.length)}`,
 		"utf-8",
 	);
 }

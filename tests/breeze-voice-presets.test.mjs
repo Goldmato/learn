@@ -5,9 +5,14 @@ import path from "node:path";
 import test from "node:test";
 import {
 	BREEZE_VOICE_PRESET_ENTRY,
+	findBreezeVoicePresetByName,
 	getSelectedBreezeVoicePreset,
+	getBreezeVoicePresetOptions,
 	loadBreezeVoicePresets,
+	readBreezeVoicePresetName,
+	resolveBreezeVoiceManifestPath,
 	STANDARD_BREEZE_VOICE_PRESET,
+	updateBreezeVoicePresetFrontmatter,
 } from "../lib/breeze-voice-presets.ts";
 
 function writeWav(filePath) {
@@ -37,10 +42,20 @@ test("manifest loads only named presets with a valid matching reference pair", (
 	fs.mkdirSync(transcripts);
 	writeWav(path.join(wavs, "123456.wav"));
 	fs.writeFileSync(path.join(transcripts, "123456-transcript.txt"), "A valid reference transcript.");
+	const styleInstructionsPath = path.join(transcripts, "style-instructions.json");
+	const styleInstructions = { voice: "Warm and measured", pace: "deliberate" };
+	fs.writeFileSync(styleInstructionsPath, JSON.stringify(styleInstructions));
 	fs.writeFileSync(manifestPath, JSON.stringify({
 		version: 1,
 		presets: [
-			{ id: "narrator", name: "Warm Narrator", wavsDirectory: wavs, transcriptsDirectory: transcripts },
+			{
+				id: "narrator",
+				name: "Warm Narrator",
+				wavsDirectory: wavs,
+				transcriptsDirectory: transcripts,
+				styleInstructionsPath,
+				styleInstructions,
+			},
 			{ id: "missing", name: "Unavailable Voice", wavsDirectory: path.join(root, "missing"), transcriptsDirectory: transcripts },
 		],
 	}));
@@ -52,6 +67,8 @@ test("manifest loads only named presets with a valid matching reference pair", (
 			mode: "clone",
 			wavsDirectory: wavs,
 			transcriptsDirectory: transcripts,
+			styleInstructionsPath,
+			styleInstructions,
 		}]);
 		assert.equal(result.diagnostics.length, 1);
 		assert.match(result.diagnostics[0], /Skipped voice preset "Unavailable Voice"/);
@@ -70,6 +87,37 @@ test("a missing manifest means no clone presets, while standard voice remains av
 	});
 });
 
+test("manifest resolution falls back to the extension config when cwd is the vault", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "breeze-manifest-location-"));
+	const vault = path.join(root, "vault");
+	const extensionDirectory = path.join(root, ".pi", "extensions");
+	const extensionManifest = path.join(root, ".pi", "breeze-voices.json");
+	const workspaceManifest = path.join(vault, "breeze-voices.json");
+	const wavs = path.join(root, "voice", "wavs");
+	const transcripts = path.join(root, "voice", "transcripts");
+	fs.mkdirSync(vault, { recursive: true });
+	fs.mkdirSync(extensionDirectory, { recursive: true });
+	fs.mkdirSync(wavs, { recursive: true });
+	fs.mkdirSync(transcripts);
+	writeWav(path.join(wavs, "123456.wav"));
+	fs.writeFileSync(path.join(transcripts, "123456-transcript.txt"), "A valid reference transcript.");
+	fs.writeFileSync(extensionManifest, JSON.stringify({
+		version: 1,
+		presets: [{ id: "cave-johnson", name: "Cave Johnson", wavsDirectory: wavs, transcriptsDirectory: transcripts }],
+	}), "utf-8");
+	try {
+		const resolved = resolveBreezeVoiceManifestPath(vault, extensionDirectory);
+		assert.equal(resolved, extensionManifest);
+		assert.deepEqual(loadBreezeVoicePresets(resolved).presets.map(({ id, name }) => ({ id, name })), [
+			{ id: "cave-johnson", name: "Cave Johnson" },
+		]);
+		fs.writeFileSync(workspaceManifest, "{}", "utf-8");
+		assert.equal(resolveBreezeVoiceManifestPath(vault, extensionDirectory), workspaceManifest);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("session voice selection restores the latest preset and reports malformed state", () => {
 	const standard = { type: "custom", customType: BREEZE_VOICE_PRESET_ENTRY, data: { preset: STANDARD_BREEZE_VOICE_PRESET } };
 	const clone = {
@@ -82,6 +130,8 @@ test("session voice selection restores the latest preset and reports malformed s
 				mode: "clone",
 				wavsDirectory: "C:\\voices\\wavs",
 				transcriptsDirectory: "C:\\voices\\transcripts",
+				styleInstructionsPath: "C:\\voices\\transcripts\\style-instructions.json",
+				styleInstructions: { voice: "Warm" },
 			},
 		},
 	};
@@ -89,5 +139,44 @@ test("session voice selection restores the latest preset and reports malformed s
 	assert.throws(
 		() => getSelectedBreezeVoicePreset([{ ...clone, data: { preset: { id: "broken", mode: "clone" } } }]),
 		/Saved Breeze voice preset in session history is invalid/,
+	);
+});
+
+test("note frontmatter stores and resolves a human-readable Breeze preset name", () => {
+	const presets = [{
+		id: "narrator",
+		name: "Warm Narrator",
+		mode: "clone",
+		wavsDirectory: "C:\\voices\\wavs",
+		transcriptsDirectory: "C:\\voices\\transcripts",
+	}];
+	const original = "---\r\ntitle: Lesson\r\ntags:\r\n  - teaching\r\n---\r\n\r\nLesson text.\r\n";
+	const updated = updateBreezeVoicePresetFrontmatter(original, "Warm Narrator");
+
+	assert.equal(readBreezeVoicePresetName(updated), "Warm Narrator");
+	assert.match(updated, /title: Lesson\r\ntags:\r\n  - teaching\r\nbreeze-voice-preset: "Warm Narrator"\r\n---/);
+	assert.ok(updated.endsWith("Lesson text.\r\n"));
+	assert.deepEqual(findBreezeVoicePresetByName(readBreezeVoicePresetName(updated), presets), presets[0]);
+	assert.deepEqual(findBreezeVoicePresetByName(STANDARD_BREEZE_VOICE_PRESET.name, presets), STANDARD_BREEZE_VOICE_PRESET);
+	assert.deepEqual(getBreezeVoicePresetOptions(presets), [
+		"Standard Breeze voice — no voice cloning",
+		"Warm Narrator (narrator) — voice clone",
+	]);
+});
+
+test("frontmatter writer creates metadata on notes without frontmatter and replaces stale preset values", () => {
+	const inserted = updateBreezeVoicePresetFrontmatter("# Lesson\n\nBody.\n", "A \"Quoted\" Voice");
+	assert.match(inserted, /^---\nbreeze-voice-preset: "A \\"Quoted\\" Voice"\n---\n\n# Lesson/);
+	assert.equal(readBreezeVoicePresetName(inserted), "A \"Quoted\" Voice");
+
+	const replaced = updateBreezeVoicePresetFrontmatter(
+		"---\nbreeze-voice-preset: Old Voice\nother: kept\n---\nBody.\n",
+		"Warm Narrator",
+	);
+	assert.equal(readBreezeVoicePresetName(replaced), "Warm Narrator");
+	assert.match(replaced, /other: kept/);
+	assert.throws(
+		() => readBreezeVoicePresetName("---\nbreeze-voice-preset: One\nbreeze-voice-preset: Two\n---\n"),
+		/repeats "breeze-voice-preset"/,
 	);
 });

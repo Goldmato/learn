@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { listVoiceReferences, type BreezeVoicePreset } from "./teach-breeze-tts.ts";
 
 export const BREEZE_VOICE_PRESET_ENTRY = "breeze-voice-preset";
+export const BREEZE_VOICE_PRESET_FRONTMATTER_FIELD = "breeze-voice-preset";
 export const STANDARD_BREEZE_VOICE_PRESET: BreezeVoicePreset = {
 	id: "standard",
 	name: "Standard Breeze voice",
@@ -11,6 +12,90 @@ export const STANDARD_BREEZE_VOICE_PRESET: BreezeVoicePreset = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function frontmatterBounds(markdown: string): { start: number; end: number } | undefined {
+	const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(markdown);
+	if (!match) return undefined;
+	const start = /^---[ \t]*\r?\n/.exec(markdown)?.[0].length ?? 0;
+	const end = /\r?\n---[ \t]*(?:\r?\n|$)$/.exec(match[0])?.index ?? match[0].length;
+	return { start, end };
+}
+
+export function readBreezeVoicePresetName(markdown: string): string | undefined {
+	const bounds = frontmatterBounds(markdown);
+	if (!bounds) return undefined;
+	const field = BREEZE_VOICE_PRESET_FRONTMATTER_FIELD;
+	const values = markdown.slice(bounds.start, bounds.end).split(/\r?\n/)
+		.flatMap((line) => {
+			const match = new RegExp(`^(?:"${field}"|${field}):[ \\t]*(.*)$`).exec(line);
+			return match ? [match[1]] : [];
+		});
+	if (values.length > 1) throw new Error(`Linked note repeats "${field}" frontmatter.`);
+	if (values.length === 0) return undefined;
+	const raw = values[0].trim();
+	if (!raw) throw new Error(`Linked note has an empty "${field}" frontmatter value.`);
+	if (raw.startsWith('"')) {
+		try {
+			const name: unknown = JSON.parse(raw);
+			if (typeof name !== "string" || !name.trim()) throw new Error();
+			return name;
+		} catch {
+			throw new Error(`Linked note has an invalid "${field}" frontmatter value.`);
+		}
+	}
+	if (/^[|>&*!#,'"`@\[\]{}]/.test(raw) || /:\s|[\[\]{}]/.test(raw)) {
+		throw new Error(`Linked note has an unsupported "${field}" frontmatter value.`);
+	}
+	return raw;
+}
+
+export function findBreezeVoicePresetByName(
+	name: string | undefined,
+	presets: BreezeVoicePreset[],
+): BreezeVoicePreset | undefined {
+	if (name === STANDARD_BREEZE_VOICE_PRESET.name) return STANDARD_BREEZE_VOICE_PRESET;
+	return presets.find((preset) => preset.name === name);
+}
+
+export function getBreezeVoicePresetOptions(presets: BreezeVoicePreset[]): string[] {
+	return [
+		`${STANDARD_BREEZE_VOICE_PRESET.name} — no voice cloning`,
+		...presets.map((preset) =>
+			`${preset.name} (${preset.id}) — voice clone${preset.styleInstructionsPath ? ", with style instructions" : ""}`,
+		),
+	];
+}
+
+export function resolveBreezeVoiceManifestPath(cwd: string, extensionDirectory: string): string {
+	const workspaceManifest = path.join(cwd, "breeze-voices.json");
+	if (fs.existsSync(workspaceManifest)) return workspaceManifest;
+	return path.resolve(extensionDirectory, "..", "breeze-voices.json");
+}
+
+export function updateBreezeVoicePresetFrontmatter(markdown: string, name: string): string {
+	if (!name.trim()) throw new Error("Breeze voice preset name must contain non-whitespace text.");
+	const bounds = frontmatterBounds(markdown);
+	if (!bounds) {
+		return `---\n${BREEZE_VOICE_PRESET_FRONTMATTER_FIELD}: ${JSON.stringify(name)}\n---\n\n${markdown}`;
+	}
+	const frontmatter = markdown.slice(bounds.start, bounds.end);
+	const newline = frontmatter.includes("\r\n") ? "\r\n" : "\n";
+	const lines = frontmatter.split(/\r?\n/);
+	const field = BREEZE_VOICE_PRESET_FRONTMATTER_FIELD;
+	const matches = lines.flatMap((line, index) =>
+		new RegExp(`^(?:"${field}"|${field}):`).test(line) ? [index] : [],
+	);
+	if (matches.length > 1) throw new Error(`Linked note repeats "${field}" frontmatter.`);
+	const rendered = `${field}: ${JSON.stringify(name)}`;
+	if (matches.length === 1) {
+		lines[matches[0]] = rendered;
+	} else {
+		let insertionIndex = lines.length;
+		while (insertionIndex > 0 && !lines[insertionIndex - 1].trim()) insertionIndex--;
+		lines.splice(insertionIndex, 0, rendered);
+	}
+	return `${markdown.slice(0, bounds.start)}${lines.join(newline)}${markdown.slice(bounds.end)}`;
 }
 
 export function loadBreezeVoicePresets(manifestPath: string): { presets: BreezeVoicePreset[]; diagnostics: string[] } {
@@ -37,7 +122,9 @@ export function loadBreezeVoicePresets(manifestPath: string): { presets: BreezeV
 			diagnostics.push(`Skipped ${label}: expected a JSON object.`);
 			continue;
 		}
-		const { id, name, wavsDirectory, transcriptsDirectory } = rawPreset;
+		const { id, name, wavsDirectory, transcriptsDirectory, styleInstructionsPath, styleInstructions } = rawPreset;
+		const hasStyleInstructionsPath = Object.hasOwn(rawPreset, "styleInstructionsPath");
+		const hasStyleInstructions = Object.hasOwn(rawPreset, "styleInstructions");
 		if (
 			typeof id !== "string" ||
 			!/^[a-z0-9][a-z0-9-]*$/.test(id) ||
@@ -47,9 +134,11 @@ export function loadBreezeVoicePresets(manifestPath: string): { presets: BreezeV
 			typeof wavsDirectory !== "string" ||
 			!wavsDirectory.trim() ||
 			typeof transcriptsDirectory !== "string" ||
-			!transcriptsDirectory.trim()
+			!transcriptsDirectory.trim() ||
+			(hasStyleInstructionsPath && (typeof styleInstructionsPath !== "string" || !styleInstructionsPath.trim())) ||
+			(hasStyleInstructionsPath !== hasStyleInstructions)
 		) {
-			diagnostics.push(`Skipped ${label}: provide a unique id, name, WAV directory, and transcript directory.`);
+			diagnostics.push(`Skipped ${label}: provide a unique id, name, WAV directory, transcript directory, and valid optional style instructions.`);
 			continue;
 		}
 		if (seenIds.has(id)) {
@@ -70,6 +159,14 @@ export function loadBreezeVoicePresets(manifestPath: string): { presets: BreezeV
 			transcriptsDirectory: path.isAbsolute(transcriptsDirectory)
 				? path.normalize(transcriptsDirectory)
 				: path.resolve(baseDirectory, transcriptsDirectory),
+			...(typeof styleInstructionsPath === "string" && hasStyleInstructions
+				? {
+					styleInstructionsPath: path.isAbsolute(styleInstructionsPath)
+						? path.normalize(styleInstructionsPath)
+						: path.resolve(baseDirectory, styleInstructionsPath),
+					styleInstructions,
+				}
+				: {}),
 		};
 		try {
 			listVoiceReferences(preset.wavsDirectory, preset.transcriptsDirectory, preset.name);
@@ -100,7 +197,9 @@ export function getSelectedBreezeVoicePreset(entries: unknown[]): BreezeVoicePre
 			typeof preset.id === "string" &&
 			typeof preset.name === "string" &&
 			typeof preset.wavsDirectory === "string" &&
-			typeof preset.transcriptsDirectory === "string"
+			typeof preset.transcriptsDirectory === "string" &&
+			Object.hasOwn(preset, "styleInstructionsPath") === Object.hasOwn(preset, "styleInstructions") &&
+			(!Object.hasOwn(preset, "styleInstructionsPath") || typeof preset.styleInstructionsPath === "string")
 		) {
 			return {
 				id: preset.id,
@@ -108,6 +207,12 @@ export function getSelectedBreezeVoicePreset(entries: unknown[]): BreezeVoicePre
 				mode: "clone",
 				wavsDirectory: preset.wavsDirectory,
 				transcriptsDirectory: preset.transcriptsDirectory,
+				...(typeof preset.styleInstructionsPath === "string" && Object.hasOwn(preset, "styleInstructions")
+					? {
+						styleInstructionsPath: preset.styleInstructionsPath,
+						styleInstructions: preset.styleInstructions,
+					}
+					: {}),
 			};
 		}
 		throw new Error("Saved Breeze voice preset in session history is invalid.");
