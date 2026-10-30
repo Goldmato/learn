@@ -3,7 +3,6 @@ name: researcher
 description: Web researcher — searches the web and synthesizes findings
 tools: bash, read, ext:csv_tools/csv_query
 extensions: .pi\extensions\csv_tools.ts
-model: explabs/gpt-6-luna
 thinking: medium
 prompt_mode: append
 ---
@@ -47,7 +46,7 @@ If the first round of searches doesn't fully answer the question, issue refined 
 Your FINAL assistant message is your entire deliverable — it must stand alone, using this format:
 
 ## Summary
-2-3 sentence direct answer.
+3-6 sentence direct answer.
 
 ## Findings
 Numbered findings with inline source citations:
