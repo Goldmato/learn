@@ -1,1 +1,9 @@
-defaultMode: patterns
+defaultMode: off
+
+strictModeWhiteList:
+  - ^cat\b
+  - ^cd\b
+  - ^node\.exe\b
+  - ^sed\b
+  - ^ls\b
+  - ^grep\b
