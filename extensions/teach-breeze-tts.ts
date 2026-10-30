@@ -10,6 +10,10 @@ import {
 	transcriptContainsAnchor,
 } from "../lib/md-log-format.ts";
 import {
+	classifyBreezeCompletion,
+	isTerminalBreezeCompletionStatus,
+} from "../lib/breeze-completion.ts";
+import {
 	BREEZE_VOICE_PRESET_ENTRY,
 	findBreezeVoicePresetByName,
 	getBreezeVoicePresetOptions,
@@ -25,7 +29,6 @@ import {
 	moveGeneratedAudio,
 	removeAudioPlaceholder,
 	replaceAudioPlaceholder,
-	validateAudioDescription,
 	validateGeneratedAudioSource,
 } from "../lib/teach-breeze-tts.ts";
 import { withMdLogWriteLock } from "../lib/md-log-write-lock.ts";
@@ -75,13 +78,13 @@ function completedAgentFailure(entries: unknown[], placement: Record<string, unk
 			!isRecord(entry.data) ||
 			entry.data.id !== placement.agentId
 		) continue;
-		const status = entry.data.status;
-		const result = typeof entry.data.result === "string" ? entry.data.result.trim() : "";
-		if (status === "completed" && /^status:\s*failure\s*$/m.test(result)) return result || "Subagent reported failure without details.";
-		if (status === "failed" || status === "cancelled" || status === "stopped" || status === "aborted" || status === "error") {
-			return result || (typeof entry.data.error === "string" ? entry.data.error : `Breeze TTS subagent ended with status ${status}.`);
-		}
-		return undefined;
+		if (!isTerminalBreezeCompletionStatus(entry.data.status)) return undefined;
+		const completion = classifyBreezeCompletion({
+			status: entry.data.status,
+			result: entry.data.result,
+			error: entry.data.error,
+		});
+		return completion.kind === "failure" ? completion.error : undefined;
 	}
 	return undefined;
 }
@@ -206,43 +209,20 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 			return;
 		}
 		activeRequests.delete(agentId);
-		const status = event.status;
-		const result = typeof event.result === "string" ? event.result : "";
-		const resultBlock = /RESULT:\s*([\s\S]*)/.exec(result)?.[1] ?? result;
-		const resultStatus = /^status:\s*(success|failure)\s*$/m.exec(resultBlock)?.[1];
-		if (status !== "completed" || resultStatus !== "success") {
-			const error = typeof event.error === "string" ? event.error :
-				resultStatus === "failure" ? resultBlock.trim() : `Breeze TTS subagent ended with status ${String(status ?? "unknown")}.`;
+		const completion = classifyBreezeCompletion(event);
+		if (completion.kind === "failure") {
 			pi.appendEntry(TEACH_BREEZE_TTS_PLACEMENT_ENTRY, {
 				markerId: request.markerId, status: "failed", notePath: request.notePath,
-				anchor: request.anchor, conceptText: request.conceptText, agentId, error,
+				anchor: request.anchor, conceptText: request.conceptText, agentId, error: completion.error,
 			});
 			try { fs.rmSync(request.handoffDirectory, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 			return;
 		}
 		try {
-			const returnedPath = /^handoffPath:\s*(.+)\s*$/m.exec(resultBlock)?.[1]?.trim();
-			const audioDescription = /^audioDescription:\s*(.*)\s*$/m.exec(resultBlock)?.[1]?.trim() ?? "";
-			const voiceName = /^voiceName:\s*(.*)\s*$/m.exec(resultBlock)?.[1]?.trim() || undefined;
-			const referenceId = /^referenceId:\s*(.*)\s*$/m.exec(resultBlock)?.[1]?.trim() || undefined;
-			const transcriptJson = /^transcript:\s*(.*)\s*$/m.exec(resultBlock)?.[1];
-			if (transcriptJson === undefined) {
-				throw new Error("Breeze TTS subagent returned no transcript for the generated audio.");
-			}
-			let transcript: unknown;
-			try {
-				transcript = JSON.parse(transcriptJson);
-			} catch {
-				throw new Error("Breeze TTS subagent returned an invalid JSON transcript.");
-			}
-			if (typeof transcript !== "string" || !transcript.trim()) {
-				throw new Error("Breeze TTS subagent returned an empty or invalid transcript.");
-			}
-			if (!returnedPath || path.resolve(returnedPath) !== path.resolve(request.handoffPath)) {
+			if (path.resolve(completion.handoffPath) !== path.resolve(request.handoffPath)) {
 				throw new Error("Breeze TTS subagent returned a missing or unexpected audio handoff path.");
 			}
 			const safeAudioPath = validateGeneratedAudioSource(request.handoffPath, request.handoffDirectory);
-			validateAudioDescription(audioDescription);
 			await withMdLogWriteLock(() => {
 				const current = latestPlacement(request.ctx.sessionManager.getEntries(), request.markerId);
 				if (!current || current.status !== "dispatched" || current.agentId !== agentId) {
@@ -258,15 +238,19 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 					throw new Error(`The exact Breeze placeholder is missing or duplicated: ${request.markerId}`);
 				}
 				const attachment = moveGeneratedAudio(
-					safeAudioPath, request.handoffDirectory, findAudioVaultRoot(request.notePath), audioDescription, voiceName,
+					safeAudioPath,
+					request.handoffDirectory,
+					findAudioVaultRoot(request.notePath),
+					completion.audioDescription,
+					completion.voiceName,
 				);
 				try {
 					replaceAudioPlaceholder(
 						request.notePath,
 						request.markerId,
 						attachment.vaultRelativePath,
-						audioDescription,
-						transcript,
+						completion.audioDescription,
+						completion.transcript,
 					);
 				} catch (error) {
 					try { fs.unlinkSync(attachment.path); } catch { /* preserve placement error */ }
@@ -276,11 +260,11 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 					...current, markerId: request.markerId, status: "placed", notePath: request.notePath,
 					filename: attachment.filename, path: attachment.path,
 					vaultRelativePath: attachment.vaultRelativePath,
-					transcriptDescription: audioDescription,
-					transcript,
+					transcriptDescription: completion.audioDescription,
+					transcript: completion.transcript,
 					voicePresetId: current.voicePresetId,
 					voicePresetName: current.voicePresetName,
-					...(referenceId ? { voiceReferenceId: referenceId } : {}),
+					...(completion.referenceId ? { voiceReferenceId: completion.referenceId } : {}),
 				});
 			});
 		} catch (error) {
