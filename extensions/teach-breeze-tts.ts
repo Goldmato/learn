@@ -14,6 +14,10 @@ import {
 	isTerminalBreezeCompletionStatus,
 } from "../lib/breeze-completion.ts";
 import {
+	isPlacementAnchorReconciled,
+	placementAnchorMarkerFromData,
+} from "../lib/placement-recovery.ts";
+import {
 	BREEZE_VOICE_PRESET_ENTRY,
 	findBreezeVoicePresetByName,
 	getBreezeVoicePresetOptions,
@@ -33,6 +37,7 @@ import {
 } from "../lib/teach-breeze-tts.ts";
 import { withMdLogWriteLock } from "../lib/md-log-write-lock.ts";
 import { readLinkedNotePath } from "../lib/teach-learning-state.ts";
+import { recoverUnresolvedPlacement } from "../lib/placement-recovery-ui.ts";
 
 const BREEZE_TTS_AGENT = "breeze-tts-maker";
 
@@ -96,10 +101,50 @@ function failedResult(markerId: string, error: string) {
 	};
 }
 
+async function recoverPlacement(request: {
+	markerId: string;
+	notePath: string;
+	ctx: any;
+}, event: unknown): Promise<void> {
+	await recoverUnresolvedPlacement(request.ctx, {
+		markerId: request.markerId,
+		generator: BREEZE_TTS_AGENT,
+		kind: "Breeze TTS audio",
+		status: "unresolved",
+		notePath: request.notePath,
+	}, event, {
+		canRetry: true,
+		remove: () => withMdLogWriteLock(() => {
+			const placement = latestPlacement(request.ctx.sessionManager.getEntries(), request.markerId);
+			if (!placement || placement.status !== "failed") {
+				throw new Error("Only a failed audio placement can be removed.");
+			}
+			const marker = `%%pi-breeze-tts:${request.markerId}%%`;
+			const note = fs.readFileSync(request.notePath, "utf-8");
+			const firstIndex = note.indexOf(marker);
+			if (firstIndex < 0 || note.indexOf(marker, firstIndex + marker.length) >= 0) {
+				throw new Error("The exact audio marker is missing or duplicated; it was not removed.");
+			}
+			removeAudioPlaceholder(request.notePath, request.markerId);
+			pi.appendEntry(TEACH_BREEZE_TTS_PLACEMENT_ENTRY, {
+				...placement, markerId: request.markerId, status: "cancelled",
+			});
+		}),
+		retry: async () => {
+			await request.ctx.executeTool(
+				"teach_breeze_tts",
+				{ retryMarkerId: request.markerId },
+				{ signal: new AbortController().signal },
+			);
+		},
+	});
+}
+
 export default function teachBreezeTts(pi: ExtensionAPI) {
 	const authorizedAgentCalls = new Set<string>();
 	const activeRequests = new Map<string, {
 		markerId: string;
+		anchorId?: string;
 		notePath: string;
 		anchor: string;
 		conceptText: string;
@@ -215,6 +260,7 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 				markerId: request.markerId, status: "failed", notePath: request.notePath,
 				anchor: request.anchor, conceptText: request.conceptText, agentId, error: completion.error,
 			});
+			await recoverPlacement(request, event);
 			try { fs.rmSync(request.handoffDirectory, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 			return;
 		}
@@ -236,6 +282,14 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 				const markerIndex = currentNote.indexOf(marker);
 				if (markerIndex < 0 || currentNote.indexOf(marker, markerIndex + marker.length) >= 0) {
 					throw new Error(`The exact Breeze placeholder is missing or duplicated: ${request.markerId}`);
+				}
+				if (!isPlacementAnchorReconciled(
+					currentNote,
+					request.anchor,
+					marker,
+					placementAnchorMarkerFromData(request, request.markerId),
+				)) {
+					throw new Error("The Breeze insertion anchor is no longer reconciled with its placeholder.");
 				}
 				const attachment = moveGeneratedAudio(
 					safeAudioPath,
@@ -272,6 +326,7 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 				markerId: request.markerId, status: "failed", notePath: request.notePath,
 				anchor: request.anchor, conceptText: request.conceptText, agentId, error: errorMessage(error),
 			});
+			await recoverPlacement(request, event);
 		} finally {
 			try { fs.rmSync(request.handoffDirectory, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
 		}
@@ -297,7 +352,7 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use this tool for each substantive learning point after its exact text has appeared in the linked md-log transcript; do not invoke the Breeze subagent directly.",
 			"For a new request, provide conceptText exactly as it appears in the unique managed transcript passage. On retry, provide only the failed markerId as retryMarkerId.",
-			"If the subagent reports failure, tell the learner the exact error and offer Retry, No, or Other. Retry using the returned markerId; on No call teach_breeze_tts_cancel to remove that placeholder.",
+			"Placement recovery is handled in a per-marker modal. Do not ask again, retry, or remove a marker unless the learner chose that action in the modal.",
 		],
 		parameters: Type.Object({
 			conceptText: Type.Optional(Type.String({ minLength: 1, maxLength: 12_000 })),
@@ -329,6 +384,7 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 				let markerId: string;
 				let rawText: string;
 				let anchor: string;
+				let anchorId: string | undefined;
 				if (retryMarkerId) {
 					if (!/^[a-f0-9-]{36}$/i.test(retryMarkerId)) throw new Error("retryMarkerId must be the UUID returned for the failed audio request.");
 					const entries = ctx.sessionManager.getEntries();
@@ -354,12 +410,13 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 					markerId = retryMarkerId;
 					rawText = placement.conceptText;
 					anchor = placement.anchor;
+					anchorId = typeof placement.anchorId === "string" ? placement.anchorId : undefined;
 					const marker = `%%pi-breeze-tts:${markerId}%%`;
 					if (!fs.readFileSync(notePath, "utf-8").includes(marker)) {
-						insertAudioPlaceholder(notePath, markerId, anchor);
+						insertAudioPlaceholder(notePath, markerId, anchor, anchorId);
 					}
 					pi.appendEntry(TEACH_BREEZE_TTS_PLACEMENT_ENTRY, {
-						markerId, status: "pending", notePath, anchor, conceptText: rawText,
+						markerId, ...(anchorId ? { anchorId } : {}), status: "pending", notePath, anchor, conceptText: rawText,
 					});
 				} else {
 					if (!conceptText) throw new Error("conceptText must contain the exact logged learning point.");
@@ -368,14 +425,15 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 					}
 					// A repeated passage is fine: placement resolves to the first occurrence.
 					markerId = randomUUID();
+					anchorId = randomUUID();
 					rawText = conceptText;
 					anchor = conceptText;
-					insertAudioPlaceholder(notePath, markerId, anchor);
+					insertAudioPlaceholder(notePath, markerId, anchor, anchorId);
 					pi.appendEntry(TEACH_BREEZE_TTS_PLACEMENT_ENTRY, {
-						markerId, status: "pending", notePath, anchor, conceptText: rawText,
+						markerId, anchorId, status: "pending", notePath, anchor, conceptText: rawText,
 					});
 				}
-				return { markerId, notePath, rawText, anchor, voicePreset };
+				return { markerId, anchorId, notePath, rawText, anchor, voicePreset };
 			});
 
 			const handoffDirectory = fs.mkdtempSync(path.join(os.tmpdir(), HANDOFF_DIRECTORY_PREFIX));
@@ -409,6 +467,7 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 					markerId: setup.markerId, status: "failed", notePath: setup.notePath,
 					anchor: setup.anchor, conceptText: setup.rawText, error: failure,
 				});
+				await recoverPlacement({ markerId: setup.markerId, notePath: setup.notePath, ctx }, { result: failure });
 				return failedResult(setup.markerId, failure);
 			}
 			authorizedAgentCalls.delete(toolCallId);
@@ -420,15 +479,18 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 					markerId: setup.markerId, status: "failed", notePath: setup.notePath,
 					anchor: setup.anchor, conceptText: setup.rawText, error: failure,
 				});
+				await recoverPlacement({ markerId: setup.markerId, notePath: setup.notePath, ctx }, outcome.result);
 				return failedResult(setup.markerId, failure);
 			}
 			pi.appendEntry(TEACH_BREEZE_TTS_PLACEMENT_ENTRY, {
 				markerId: setup.markerId, status: "dispatched", agentId: backgroundAgent.agentId,
+				...(setup.anchorId ? { anchorId: setup.anchorId } : {}),
 				notePath: setup.notePath, anchor: setup.anchor, conceptText: setup.rawText,
 				voicePresetId: setup.voicePreset.id, voicePresetName: setup.voicePreset.name,
 			});
 			activeRequests.set(backgroundAgent.agentId, {
 				markerId: setup.markerId, notePath: setup.notePath, anchor: setup.anchor,
+				...(setup.anchorId ? { anchorId: setup.anchorId } : {}),
 				conceptText: setup.rawText, handoffDirectory, handoffPath, ctx,
 			});
 			const earlyCompletion = earlyCompletions.get(backgroundAgent.agentId);

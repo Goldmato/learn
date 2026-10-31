@@ -9,6 +9,7 @@ import {
 	VISUAL_KINDS,
 	visualMarker,
 } from "./md-log-format.ts";
+import { placementAnchorMarker, removePlacementAnchorMarker } from "./placement-recovery.ts";
 
 /**
  * Placeholder and attachment handling for the picture makers (mermaid, svg).
@@ -59,8 +60,10 @@ export function insertVisualPlaceholder(
 	kind: VisualKind,
 	markerId: string,
 	insertAfter: string,
+	anchorId?: string,
 ): string {
 	requireMarkerId(markerId);
+	if (anchorId !== undefined) requireMarkerId(anchorId);
 	const visualKind = requireKind(kind);
 	const anchor = insertAfter.trim();
 	if (!anchor) throw new Error("Visual insertion anchor must contain non-whitespace text.");
@@ -70,6 +73,8 @@ export function insertVisualPlaceholder(
 	const existing = fs.readFileSync(notePath, "utf-8");
 	const marker = visualMarker(visualKind, markerId);
 	if (existing.includes(marker)) throw new Error(`Visual placeholder already exists: ${markerId}`);
+	const idMarker = anchorId ? placementAnchorMarker(anchorId, markerId) : "";
+	if (idMarker && existing.includes(idMarker)) throw new Error(`Visual anchor already exists: ${anchorId}`);
 
 	const { start, end } = managedBounds(existing);
 	const anchorIndex = existing.indexOf(anchor, start);
@@ -82,21 +87,17 @@ export function insertVisualPlaceholder(
 	const after = existing.slice(insertAt);
 	const separator = before.endsWith("\n") ? "\n" : "\n\n";
 	const trailingNewline = after.startsWith("\n") ? "" : "\n";
-	fs.writeFileSync(notePath, `${before}${separator}${marker}${trailingNewline}${after}`, "utf-8");
+	fs.writeFileSync(notePath, `${before}${separator}${idMarker ? `${idMarker}\n\n` : ""}${marker}${trailingNewline}${after}`, "utf-8");
 	return marker;
 }
 
 export function removeVisualPlaceholder(notePath: string, kind: VisualKind, markerId: string): void {
 	requireMarkerId(markerId);
 	const marker = visualMarker(requireKind(kind), markerId);
-	const existing = fs.readFileSync(notePath, "utf-8");
+	const existing = removePlacementAnchorMarker(fs.readFileSync(notePath, "utf-8"), markerId);
 	const firstIndex = existing.indexOf(marker);
 	if (firstIndex < 0) return;
-	const lineStart = existing.lastIndexOf("\n", firstIndex - 1) + 1;
-	const lineEnd = existing.indexOf("\n", firstIndex + marker.length);
-	const removeStart = lineStart === firstIndex ? lineStart : firstIndex;
-	const removeEnd = lineEnd < 0 ? existing.length : lineEnd + 1;
-	fs.writeFileSync(notePath, `${existing.slice(0, removeStart)}${existing.slice(removeEnd)}`, "utf-8");
+	fs.writeFileSync(notePath, `${existing.slice(0, firstIndex)}${existing.slice(firstIndex + marker.length)}`, "utf-8");
 }
 
 /**

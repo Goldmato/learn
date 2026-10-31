@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { placementAnchorMarkerFromData } from "./placement-recovery.ts";
 
 export const TRANSCRIPT_START = "%% pi-md-log:start v1 %%";
 export const TRANSCRIPT_END = "%% pi-md-log:end v1 %%";
@@ -615,6 +616,7 @@ export function applyPlacements(
 	notePath: string,
 	durableMarkdown = "",
 ): TranscriptBlock[] {
+	blocks = blocks.map((block) => ({ ...block }));
 	const resolvedNotePath = path.resolve(notePath);
 	const { chain, order } = readActiveChain(entriesValue, "applying placements");
 	const subagentRecords = new Map<string, Record<string, unknown>>();
@@ -640,6 +642,107 @@ export function applyPlacements(
 		}
 	});
 	if (imagePlacements.size === 0 && visualPlacements.size === 0 && audioPlacements.size === 0) return blocks;
+
+	type AnchorMatch = { blockIndex: number; offset: number };
+	function findAnchorMatches(anchor: string): AnchorMatch[] {
+		const matches: AnchorMatch[] = [];
+		blocks.forEach((block, blockIndex) => {
+			const text = block.kind === "prose" ? block.text : block.kind === "markdown" ? block.markdown : "";
+			for (let offset = text.indexOf(anchor); offset >= 0; offset = text.indexOf(anchor, offset + anchor.length)) {
+				matches.push({ blockIndex, offset });
+			}
+		});
+		return matches;
+	}
+
+	function durableAnchorOrdinal(anchor: string, anchorMarker: string): number | undefined {
+		const markerIndex = durableMarkdown.indexOf(anchorMarker);
+		if (markerIndex < 0 || durableMarkdown.indexOf(anchorMarker, markerIndex + anchorMarker.length) >= 0) {
+			return undefined;
+		}
+		const startMarker = "%% pi-md-log:start v1 %%";
+		const endMarker = "%% pi-md-log:end v1 %%";
+		const managedStart = durableMarkdown.indexOf(startMarker);
+		const contentStart = managedStart < 0 ? -1 : managedStart + startMarker.length;
+		const managedEnd = contentStart < 0 ? -1 : durableMarkdown.indexOf(endMarker, contentStart);
+		if (contentStart < 0 || managedEnd < 0 || markerIndex < contentStart || markerIndex >= managedEnd) return -1;
+		const anchorIndex = durableMarkdown.lastIndexOf(anchor, markerIndex);
+		if (anchorIndex < contentStart || anchorIndex + anchor.length > managedEnd ||
+			durableMarkdown.slice(anchorIndex + anchor.length, markerIndex).trim()) return -1;
+		let ordinal = 0;
+		for (let index = durableMarkdown.indexOf(anchor, contentStart);
+			index >= contentStart && index < anchorIndex;
+			index = durableMarkdown.indexOf(anchor, index + anchor.length)) {
+			ordinal++;
+		}
+		return ordinal;
+	}
+
+	const anchorTargets = new Map<string, number>();
+	const stablePlacements = [
+		...[...imagePlacements].map(([markerId, value]) => ({ markerId, data: value.data })),
+		...[...visualPlacements].map(([markerId, value]) => ({ markerId, data: value.data })),
+		...[...audioPlacements].map(([markerId, value]) => ({ markerId, data: value.data })),
+	].filter(({ data }) => data.status !== "failed" && data.status !== "cancelled");
+	const annotations = new Map<number, Array<{ end: number; marker: string }>>();
+	for (const { markerId, data } of stablePlacements) {
+		const anchorMarker = placementAnchorMarkerFromData(data, markerId);
+		if (anchorMarker === undefined) continue;
+		if (typeof data.anchor !== "string" || !data.anchor.trim()) {
+			throw new Error(`Cannot safely reconcile Generated placement ${markerId} without its anchor text.`);
+		}
+		const matches = findAnchorMatches(data.anchor);
+		let match: AnchorMatch | undefined;
+		if (typeof anchorMarker === "string") {
+			const ordinal = durableAnchorOrdinal(data.anchor, anchorMarker);
+			if (ordinal === -1) {
+				throw new Error(`Cannot safely reconcile Generated placement ${markerId}; its anchor ID marker moved away from its anchor.`);
+			}
+			match = ordinal === undefined
+				? matches.length === 1 ? matches[0] : undefined
+				: matches[ordinal];
+		} else if (matches.length === 1) {
+			match = matches[0];
+		}
+		if (!match) {
+			throw new Error(`Cannot safely reconcile Generated placement ${markerId}; resolve or regenerate it before refreshing the note.`);
+		}
+		if (typeof anchorMarker !== "string") continue;
+		const group = annotations.get(match.blockIndex) ?? [];
+		group.push({ end: match.offset + data.anchor.length, marker: anchorMarker });
+		annotations.set(match.blockIndex, group);
+	}
+	if (annotations.size > 0) {
+		const annotatedBlocks: TranscriptBlock[] = [];
+		blocks.forEach((block, blockIndex) => {
+			const markers = annotations.get(blockIndex);
+			const text = block.kind === "prose" ? block.text : block.kind === "markdown" ? block.markdown : "";
+			if (!markers || (block.kind !== "prose" && block.kind !== "markdown")) {
+				annotatedBlocks.push(block);
+				return;
+			}
+			let cursor = 0;
+			for (const boundary of [...new Set(markers.map((item) => item.end))].sort((a, b) => a - b)) {
+				if (boundary <= cursor) continue;
+				const ending = text.slice(cursor, boundary);
+				const ids = markers.filter((item) => item.end === boundary).map((item) => item.marker);
+				const separator = ending.endsWith(" ") || ending.endsWith("\n") ? "" : " ";
+				const markedText = `${ending}${separator}${ids.join(" ")}`;
+				annotatedBlocks.push(block.kind === "prose"
+					? { ...block, text: markedText }
+					: { ...block, markdown: markedText });
+				for (const id of ids) anchorTargets.set(id, annotatedBlocks.length);
+				cursor = boundary;
+			}
+			if (cursor < text.length) {
+				const remainder = text.slice(cursor);
+				annotatedBlocks.push(block.kind === "prose"
+					? { ...block, text: remainder }
+					: { ...block, markdown: remainder });
+			}
+		});
+		blocks = annotatedBlocks;
+	}
 
 	const blockOrder = blocks.map((block) => {
 		const entryId = block.kind === "prose" ? block.entryId : undefined;
@@ -667,14 +770,18 @@ export function applyPlacements(
 		[...durableAudioCount].filter(([anchor, count]) => count >= (placementCount.get(anchor) ?? 0)).map(([anchor]) => anchor),
 	);
 
-	function targetIndex(anchor: unknown, entryOrder: number): number {
-		// The passage is the intent, so it wins whenever it resolves. Session
-		// position is only the fallback for an anchor that has since disappeared.
+	function targetIndex(anchor: unknown, entryOrder: number, anchorMarker?: string | null): number {
 		if (typeof anchor === "string" && anchor.trim()) {
-			const index = blocks.findIndex((block) =>
-				(block.kind === "prose" && block.text.includes(anchor)) ||
-				(block.kind === "markdown" && block.markdown.includes(anchor)));
-			if (index >= 0) return index + 1;
+			const matches = findAnchorMatches(anchor);
+			if (anchorMarker === undefined) {
+				if (matches[0]) return matches[0].blockIndex + 1;
+			} else if (typeof anchorMarker === "string") {
+				const target = anchorTargets.get(anchorMarker);
+				if (target !== undefined) return target;
+				if (matches.length === 1) return matches[0].blockIndex + 1;
+			} else if (matches.length === 1) {
+				return matches[0].blockIndex + 1;
+			}
 		}
 		if (entryOrder >= 0) {
 			for (let index = blockOrder.length - 1; index >= 0; index--) {
@@ -726,7 +833,7 @@ export function applyPlacements(
 		claimed.add(durable);
 		if (attachmentPath) emittedPaths.add(attachmentPath);
 		insertions.push({
-			index: targetIndex(data.anchor, entryOrder),
+			index: targetIndex(data.anchor, entryOrder, placementAnchorMarkerFromData(data, markerId)),
 			seq: sequence++,
 			block: { kind: "image_placement", markerId, status, captionTitle: title || deriveImageNoteTitle(caption), caption, attachmentPath },
 		});
@@ -770,7 +877,7 @@ export function applyPlacements(
 		claimed.add(durable);
 		if (attachmentPath) emittedPaths.add(attachmentPath);
 		insertions.push({
-			index: targetIndex(data.anchor, entryOrder),
+			index: targetIndex(data.anchor, entryOrder, placementAnchorMarkerFromData(data, markerId)),
 			seq: sequence++,
 			block: { kind: "visual_placement", visualKind, markerId, status, captionTitle: title || deriveImageNoteTitle(caption), caption, attachmentPath },
 		});
@@ -802,7 +909,7 @@ export function applyPlacements(
 		claimed.add(durable);
 		if (attachmentPath) emittedPaths.add(attachmentPath);
 		insertions.push({
-			index: targetIndex(data.anchor, entryOrder),
+			index: targetIndex(data.anchor, entryOrder, placementAnchorMarkerFromData(data, markerId)),
 			seq: sequence++,
 			block: { kind: "audio", markerId, status, attachmentPath, transcriptDescription, transcript },
 		});

@@ -24,7 +24,13 @@ function createPaintFixture(agentOutcome = {
 	const toolCalls = [];
 	const registeredTools = new Map();
 	const handlers = new Map();
+	const eventHandlers = new Map();
+	const notifications = [];
 	const pi = {
+		events: {
+			on(event, handler) { eventHandlers.set(event, handler); },
+			emit(event, payload) { return eventHandlers.get(event)?.(payload); },
+		},
 		on(event, handler) { handlers.set(event, handler); },
 		registerTool(definition) { registeredTools.set(definition.name, definition); },
 		appendEntry(customType, data) {
@@ -37,6 +43,10 @@ function createPaintFixture(agentOutcome = {
 	const ctx = {
 		cwd: root,
 		sessionManager: { getEntries: () => entries },
+		ui: {
+			notify(message) { notifications.push(message); },
+			async select() { return "Keep marker unresolved"; },
+		},
 		executeTool: async (name, args, options) => {
 			toolCalls.push({ name, args, options });
 			if (executeError) throw executeError;
@@ -55,7 +65,7 @@ function createPaintFixture(agentOutcome = {
 			return agentOutcome;
 		},
 	};
-	return { root, notePath, entries, toolCalls, registeredTools, handlers, ctx };
+	return { root, notePath, entries, toolCalls, registeredTools, handlers, eventHandlers, notifications, pi, ctx };
 }
 
 test("main paint tool accepts an image prompt and exact note anchor, then dispatches in background", async () => {
@@ -77,7 +87,8 @@ test("main paint tool accepts an image prompt and exact note anchor, then dispat
 		const markerId = /%%pi-comfyui-image:([a-f0-9-]{36})%%/.exec(note)?.[1];
 		assert.ok(markerId, "the note should contain a visible marker while the subagent runs");
 		assert.ok(note.indexOf(markerId) > note.indexOf("Existing note text."));
-		assert.ok(note.indexOf(markerId) < note.indexOf("Existing note text.") + 60);
+		assert.match(note, new RegExp(`%%pi-placement-anchor:[a-f0-9-]{36}:${markerId}%%`));
+		assert.ok(note.indexOf(`%%pi-comfyui-image:${markerId}%%`) > note.indexOf("Existing note text."));
 		assert.equal(result.details.status, "dispatched");
 		assert.deepEqual(fixture.toolCalls.map((call) => call.name), ["Agent"]);
 		const dispatch = fixture.toolCalls[0].args;
@@ -103,11 +114,46 @@ test("main paint tool accepts an image prompt and exact note anchor, then dispat
 			entry.customType === TEACH_IMAGE_PLACEMENT_ENTRY &&
 			entry.data.markerId === markerId &&
 			entry.data.status === "dispatched" &&
+			typeof entry.data.anchorId === "string" &&
 			entry.data.anchor === "Existing note text." &&
 			entry.data.captionTitle === "Inside a Plant Cell" &&
 			entry.data.caption === "The cutaway shows how the membrane, nucleus, and chloroplasts support the cell's work.",
 		));
 	} finally {
+		fs.rmSync(fixture.root, { recursive: true, force: true });
+	}
+});
+
+test("an unrecognized image-agent result keeps the marker and presents recovery", async () => {
+	const fixture = createPaintFixture();
+	let diagnosticPath;
+	try {
+		const result = await fixture.registeredTools.get("teach_comfyui_paint").execute(
+			"paint",
+			{ prompt: "A glowing leaf", captionTitle: "Photosynthesis", caption: "The leaf collects light.", insertAfter: "Existing note text." },
+			undefined,
+			undefined,
+			fixture.ctx,
+		);
+		await fixture.pi.events.emit("subagents:completed", {
+			id: result.details.agentId,
+			type: "comfyui-image-maker",
+			status: "completed",
+			result: { content: [{ type: "text", text: "unrecognized generator output" }] },
+		});
+		const note = fs.readFileSync(fixture.notePath, "utf-8");
+		const markerId = /%%pi-comfyui-image:([a-f0-9-]{36})%%/.exec(note)?.[1];
+		assert.ok(markerId);
+		assert.ok(fixture.entries.some((entry) =>
+			entry.customType === TEACH_IMAGE_PLACEMENT_ENTRY &&
+			entry.data.markerId === markerId &&
+			entry.data.status === "failed",
+		));
+		diagnosticPath = /Placement diagnostic saved to: (.+?)\. Forward/.exec(fixture.notifications.join("\n"))?.[1];
+		assert.ok(diagnosticPath && fs.existsSync(diagnosticPath));
+		assert.match(fs.readFileSync(diagnosticPath, "utf-8"), /unrecognized generator output/);
+	} finally {
+		if (diagnosticPath) fs.rmSync(diagnosticPath, { force: true });
 		fs.rmSync(fixture.root, { recursive: true, force: true });
 	}
 });
@@ -132,7 +178,7 @@ test("main paint tool rejects a note anchor that is not present before creating 
 	}
 });
 
-test("main paint tool removes its marker and reports a subagent dispatch error", async () => {
+test("main paint tool preserves its marker and reports a subagent dispatch error", async () => {
 	const fixture = createPaintFixture({
 		isError: true,
 		result: { content: [{ type: "text", text: "Agent unavailable" }] },
@@ -143,7 +189,7 @@ test("main paint tool removes its marker and reports a subagent dispatch error",
 			tool.execute("paint", { prompt: "A glowing leaf", captionTitle: "Photosynthesis", caption: "The leaf collects light to power photosynthesis.", insertAfter: "Existing note text." }, undefined, undefined, fixture.ctx),
 			/Agent unavailable/,
 		);
-		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-comfyui-image:/);
+		assert.match(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-comfyui-image:[a-f0-9-]{36}%%/);
 		assert.ok(fixture.entries.some((entry) =>
 			entry.customType === TEACH_IMAGE_PLACEMENT_ENTRY &&
 			entry.data.status === "failed" &&
@@ -154,7 +200,7 @@ test("main paint tool removes its marker and reports a subagent dispatch error",
 	}
 });
 
-test("main paint tool clears its marker if nested Agent execution rejects", async () => {
+test("main paint tool preserves its marker if nested Agent execution rejects", async () => {
 	const fixture = createPaintFixture(undefined, new Error("Agent runtime failed"));
 	try {
 		const tool = fixture.registeredTools.get("teach_comfyui_paint");
@@ -162,7 +208,7 @@ test("main paint tool clears its marker if nested Agent execution rejects", asyn
 			tool.execute("paint", { prompt: "A glowing leaf", captionTitle: "Photosynthesis", caption: "The leaf collects light to power photosynthesis.", insertAfter: "Existing note text." }, undefined, undefined, fixture.ctx),
 			/Agent runtime failed/,
 		);
-		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-comfyui-image:/);
+		assert.match(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-comfyui-image:[a-f0-9-]{36}%%/);
 		assert.ok(fixture.entries.some((entry) =>
 			entry.customType === TEACH_IMAGE_PLACEMENT_ENTRY &&
 			entry.data.status === "failed" &&
@@ -184,7 +230,7 @@ test("main paint tool rejects success-shaped Agent responses without a backgroun
 			tool.execute("paint", { prompt: "A glowing leaf", captionTitle: "Photosynthesis", caption: "The leaf collects light to power photosynthesis.", insertAfter: "Existing note text." }, undefined, undefined, fixture.ctx),
 			/Unknown agent type/,
 		);
-		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-comfyui-image:/);
+		assert.match(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-comfyui-image:[a-f0-9-]{36}%%/);
 	} finally {
 		fs.rmSync(fixture.root, { recursive: true, force: true });
 	}

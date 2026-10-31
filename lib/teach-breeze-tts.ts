@@ -1,5 +1,6 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { renderAudioTranscriptCallout } from "./md-log-format.ts";
+import { placementAnchorMarker, removePlacementAnchorMarker } from "./placement-recovery.ts";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -193,8 +194,14 @@ export function findAudioVaultRoot(notePath: string): string {
  * Markers are a projection of the transcript, not a note edit: the renderer owns
  * every position inside the managed section. These helpers validate arguments.
  */
-export function insertAudioPlaceholder(notePath: string, markerId: string, anchor: string): string {
+export function insertAudioPlaceholder(
+	notePath: string,
+	markerId: string,
+	anchor: string,
+	anchorId?: string,
+): string {
 	if (!/^[a-f0-9-]{36}$/i.test(markerId)) throw new Error("Audio placeholder ID must be a UUID.");
+	if (anchorId !== undefined && !/^[a-f0-9-]{36}$/i.test(anchorId)) throw new Error("Audio anchor ID must be a UUID.");
 	const exactAnchor = anchor.trim();
 	if (!exactAnchor) throw new Error("Audio insertion anchor must contain non-whitespace text.");
 	const stat = fs.lstatSync(notePath);
@@ -203,6 +210,8 @@ export function insertAudioPlaceholder(notePath: string, markerId: string, ancho
 	const existing = fs.readFileSync(notePath, "utf-8");
 	const marker = `${AUDIO_MARKER_PREFIX}${markerId}%%`;
 	if (existing.includes(marker)) throw new Error(`Audio placeholder already exists: ${markerId}`);
+	const idMarker = anchorId ? placementAnchorMarker(anchorId, markerId) : "";
+	if (idMarker && existing.includes(idMarker)) throw new Error(`Audio anchor already exists: ${anchorId}`);
 	const managedStart = existing.lastIndexOf("%% pi-md-log:start v1 %%");
 	const contentStart = managedStart < 0 ? -1 : managedStart + "%% pi-md-log:start v1 %%".length;
 	const managedEnd = contentStart < 0 ? -1 : existing.indexOf("%% pi-md-log:end v1 %%", contentStart);
@@ -213,7 +222,7 @@ export function insertAudioPlaceholder(notePath: string, markerId: string, ancho
 		// marker rather than failing the whole request; the next sync re-anchors it.
 		const before = existing.slice(0, managedEnd).trimEnd();
 		const after = existing.slice(managedEnd);
-		fs.writeFileSync(notePath, `${before}\n\n${marker}\n\n${after}`, "utf-8");
+		fs.writeFileSync(notePath, `${before}\n\n${idMarker ? `${idMarker}\n\n` : ""}${marker}\n\n${after}`, "utf-8");
 		return marker;
 	}
 	const insertAt = anchorIndex + exactAnchor.length;
@@ -221,21 +230,17 @@ export function insertAudioPlaceholder(notePath: string, markerId: string, ancho
 	const after = existing.slice(insertAt);
 	const separator = before.endsWith("\n") ? "\n" : "\n\n";
 	const trailingNewline = after.startsWith("\n") ? "" : "\n";
-	fs.writeFileSync(notePath, `${before}${separator}${marker}${trailingNewline}${after}`, "utf-8");
+	fs.writeFileSync(notePath, `${before}${separator}${idMarker ? `${idMarker}\n\n` : ""}${marker}${trailingNewline}${after}`, "utf-8");
 	return marker;
 }
 
 export function removeAudioPlaceholder(notePath: string, markerId: string): void {
 	if (!/^[a-f0-9-]{36}$/i.test(markerId)) throw new Error("Audio placeholder ID must be a UUID.");
 	const marker = `${AUDIO_MARKER_PREFIX}${markerId}%%`;
-	const existing = fs.readFileSync(notePath, "utf-8");
+	const existing = removePlacementAnchorMarker(fs.readFileSync(notePath, "utf-8"), markerId);
 	const firstIndex = existing.indexOf(marker);
 	if (firstIndex < 0) return;
-	const lineStart = existing.lastIndexOf("\n", firstIndex - 1) + 1;
-	const lineEnd = existing.indexOf("\n", firstIndex + marker.length);
-	const removeStart = lineStart === firstIndex ? lineStart : firstIndex;
-	const removeEnd = lineEnd < 0 ? existing.length : lineEnd + 1;
-	fs.writeFileSync(notePath, `${existing.slice(0, removeStart)}${existing.slice(removeEnd)}`, "utf-8");
+	fs.writeFileSync(notePath, `${existing.slice(0, firstIndex)}${existing.slice(firstIndex + marker.length)}`, "utf-8");
 }
 
 function ensureVaultDirectory(vaultRoot: string, directory: string): string {

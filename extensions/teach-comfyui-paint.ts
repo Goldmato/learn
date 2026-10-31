@@ -12,6 +12,7 @@ import {
 	insertImagePlaceholder,
 	removeImagePlaceholder,
 } from "../lib/teach-image-attachment.ts";
+import { recoverUnresolvedPlacement } from "../lib/placement-recovery-ui.ts";
 import { readLinkedNotePath } from "../lib/teach-learning-state.ts";
 import { withMdLogWriteLock } from "../lib/md-log-write-lock.ts";
 
@@ -40,6 +41,70 @@ function isBackgroundAgentResult(value: unknown): value is { status: "background
 
 export default function teachComfyuiPaint(pi: ExtensionAPI) {
 	const authorizedAgentCalls = new Set<string>();
+	const activeAgents = new Map<string, { markerId: string; notePath: string; anchor: string; ctx: any }>();
+	const earlyCompletions = new Map<string, Record<string, unknown>>();
+
+	function latestPlacement(ctx: any, markerId: string): Record<string, unknown> | undefined {
+		const entries = ctx.sessionManager.getEntries();
+		for (let index = entries.length - 1; index >= 0; index--) {
+			const entry = entries[index];
+			if (isRecord(entry) && entry.type === "custom" &&
+				entry.customType === TEACH_IMAGE_PLACEMENT_ENTRY && isRecord(entry.data) &&
+				entry.data.markerId === markerId) return entry.data;
+		}
+		return undefined;
+	}
+
+	async function recover(markerId: string, notePath: string, ctx: any, event: unknown): Promise<void> {
+		const marker = `%%pi-comfyui-image:${markerId}%%`;
+		await recoverUnresolvedPlacement(ctx, {
+			markerId,
+			generator: IMAGE_MAKER_AGENT,
+			kind: "image",
+			status: "unresolved",
+			notePath,
+		}, event, {
+			remove: () => withMdLogWriteLock(() => {
+				const placement = latestPlacement(ctx, markerId);
+				const note = fs.readFileSync(notePath, "utf-8");
+				const firstIndex = note.indexOf(marker);
+				if (firstIndex < 0 || note.indexOf(marker, firstIndex + marker.length) >= 0) {
+					throw new Error("The exact image marker is missing or duplicated; it was not removed.");
+				}
+				removeImagePlaceholder(notePath, markerId);
+				pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, {
+					...placement, markerId, status: "cancelled", notePath,
+				});
+			}),
+		});
+	}
+
+	async function finalizeAgent(event: Record<string, unknown>): Promise<void> {
+		if (event.type !== IMAGE_MAKER_AGENT || typeof event.id !== "string") return;
+		const agentId = event.id;
+		const request = activeAgents.get(agentId);
+		if (!request) {
+			earlyCompletions.set(agentId, event);
+			return;
+		}
+		activeAgents.delete(agentId);
+		const placement = latestPlacement(request.ctx, request.markerId);
+		if (placement?.status === "placed" || placement?.status === "cancelled") return;
+		if (placement?.status !== "failed") {
+			pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, {
+				...placement,
+				markerId: request.markerId,
+				status: "failed",
+				error: "The image generator returned without a confirmed placement.",
+				notePath: request.notePath,
+				anchor: request.anchor,
+			});
+		}
+		await recover(request.markerId, request.notePath, request.ctx, event);
+	}
+
+	pi.events?.on("subagents:completed", (data) => { if (isRecord(data)) return finalizeAgent(data); });
+	pi.events?.on("subagents:failed", (data) => { if (isRecord(data)) return finalizeAgent(data); });
 	pi.on("tool_call", (event) => {
 		if (event.toolName !== "Agent" || !isRecord(event.input) || event.input.subagent_type !== IMAGE_MAKER_AGENT) {
 			return;
@@ -76,7 +141,7 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 			const insertAfter = params.insertAfter.trim();
 			if (!insertAfter) throw new Error("Image insertion anchor must contain non-whitespace text.");
 
-			const { markerId, notePath } = await withMdLogWriteLock(() => {
+			const { markerId, anchorId, notePath } = await withMdLogWriteLock(() => {
 				const linkedNote = readLinkedNotePath(ctx.sessionManager.getEntries());
 				if (!linkedNote) throw new Error("Link the current lesson note with /md-log before requesting an image.");
 				const resolvedNote = path.isAbsolute(linkedNote) ? linkedNote : path.resolve(ctx.cwd, linkedNote);
@@ -86,16 +151,18 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 					throw new Error("Image insertion anchor must be exact text from the managed linked-note transcript.");
 				}
 				const id = randomUUID();
-				insertImagePlaceholder(resolvedNote, id, insertAfter);
+				const anchorId = randomUUID();
+				insertImagePlaceholder(resolvedNote, id, insertAfter, anchorId);
 				pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, {
 					markerId: id,
+					anchorId,
 					status: "pending",
 					notePath: resolvedNote,
 					anchor: insertAfter,
 					captionTitle,
 					caption,
 				});
-				return { markerId: id, notePath: resolvedNote };
+				return { markerId: id, anchorId, notePath: resolvedNote };
 			});
 
 			const subagentPrompt = [
@@ -103,7 +170,7 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 				"Use only the fixed MOSS image workflow available through your tools. Choose a suitable aspect ratio and layout; use the workflow's supported box limit.",
 				"Do not inspect project files, request extra context, or return image data.",
 				"When generation succeeds, call teach_attach_generated_image with the exact generated sourcePath, a short descriptive topic, the exact captionTitle and caption below, and the markerId and notePath below. The attachment tool duplicates the image into the vault and replaces the marker with a titled, italicized quote block followed by a standard Obsidian image embed.",
-				"If generation fails, call teach_attach_generated_image with markerId, notePath, and the exact error (no sourcePath, topic, captionTitle, or caption) to remove the placeholder; then return that error without claiming success.",
+				"If generation fails, call teach_attach_generated_image with markerId, notePath, and the exact error (no sourcePath, topic, captionTitle, or caption). The marker is preserved for the learner's recovery choice; return the exact error without claiming success.",
 				"",
 				`Image request: ${prompt}`,
 				`Caption: ${caption}`,
@@ -113,7 +180,6 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 				`insertAfter: ${insertAfter}`,
 			].join("\n");
 			const recordFailure = (failure: string) => withMdLogWriteLock(() => {
-				removeImagePlaceholder(notePath, markerId);
 				pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, {
 					markerId,
 					status: "failed",
@@ -138,6 +204,7 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 			} catch (error) {
 				const failure = error instanceof Error ? error.message : String(error);
 				await recordFailure(failure);
+				await recover(markerId, notePath, ctx, { result: failure });
 				throw error;
 			} finally {
 				authorizedAgentCalls.delete(_toolCallId);
@@ -147,11 +214,13 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 			if (outcome.isError || !isBackgroundAgentResult(backgroundAgent)) {
 				const failure = resultText(outcome.result) || "The image-maker subagent could not be started.";
 				await recordFailure(failure);
+				await recover(markerId, notePath, ctx, outcome.result);
 				throw new Error(failure);
 			}
 
 			pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, {
 				markerId,
+				anchorId,
 				status: "dispatched",
 				agentId: backgroundAgent.agentId,
 				notePath,
@@ -159,6 +228,12 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 				captionTitle,
 				caption,
 			});
+			activeAgents.set(backgroundAgent.agentId, { markerId, notePath, anchor: insertAfter, ctx });
+			const earlyCompletion = earlyCompletions.get(backgroundAgent.agentId);
+			if (earlyCompletion) {
+				earlyCompletions.delete(backgroundAgent.agentId);
+				void finalizeAgent(earlyCompletion);
+			}
 			return {
 				content: [{ type: "text" as const, text: "Image request started in the background; a placeholder is in the linked note." }],
 				details: { status: "dispatched", agentId: backgroundAgent.agentId },

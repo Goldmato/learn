@@ -117,7 +117,12 @@ test("teach_visual routes svg to the svg-maker", async () => {
 	try {
 		await fixture.registeredTools.get("teach_visual").execute("visual", params({ kind: "svg" }), undefined, undefined, fixture.ctx);
 		assert.equal(fixture.toolCalls[0].args.subagent_type, "svg-maker");
-		assert.match(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-visual:svg:/);
+		const note = fs.readFileSync(fixture.notePath, "utf-8");
+		const anchorMarker = /%%pi-placement-anchor:([a-f0-9-]{36}):([a-f0-9-]{36})%%/i.exec(note);
+		const visualMarker = /%%pi-visual:svg:([a-f0-9-]{36})%%/i.exec(note);
+		assert.ok(anchorMarker);
+		assert.ok(visualMarker);
+		assert.equal(anchorMarker[2], visualMarker[1]);
 	} finally {
 		fs.rmSync(fixture.root, { recursive: true, force: true });
 	}
@@ -157,7 +162,7 @@ test("teach_visual rejects an anchor that is not in the transcript without leavi
 	}
 });
 
-test("teach_visual clears its marker when the dispatch fails", async () => {
+test("teach_visual preserves its marker when the dispatch fails", async () => {
 	const fixture = createVisualFixture({
 		isError: true,
 		result: { content: [{ type: "text", text: "Agent unavailable" }] },
@@ -167,7 +172,7 @@ test("teach_visual clears its marker when the dispatch fails", async () => {
 			fixture.registeredTools.get("teach_visual").execute("visual", params(), undefined, undefined, fixture.ctx),
 			/Agent unavailable/,
 		);
-		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-visual:/);
+		assert.match(fs.readFileSync(fixture.notePath, "utf-8"), /%%pi-visual:mermaid:[a-f0-9-]{36}%%/);
 		assert.ok(fixture.entries.some((entry) =>
 			entry.customType === TEACH_VISUAL_PLACEMENT_ENTRY && entry.data.status === "failed",
 		));
@@ -262,7 +267,7 @@ test("the attach tool is idempotent for an already placed picture", async () => 
 	}
 });
 
-test("the attach tool clears the marker when authoring failed", async () => {
+test("the attach tool preserves the marker when authoring failed", async () => {
 	const fixture = createAttachFixture();
 	try {
 		await fixture.tools.get("teach_attach_generated_visual").execute("attach", {
@@ -271,7 +276,7 @@ test("the attach tool clears the marker when authoring failed", async () => {
 			notePath: fixture.notePath,
 			error: "the brief is self-contradictory",
 		}, undefined, undefined, fixture.ctx);
-		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /pi-visual:/);
+		assert.match(fs.readFileSync(fixture.notePath, "utf-8"), new RegExp(`pi-visual:mermaid:${MARKER_ID}`));
 		assert.ok(fixture.entries.some((entry) =>
 			entry.customType === TEACH_VISUAL_PLACEMENT_ENTRY && entry.data.status === "failed",
 		));

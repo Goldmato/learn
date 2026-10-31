@@ -7,9 +7,12 @@ import {
 	TEACH_IMAGE_PLACEMENT_ENTRY,
 } from "../../lib/md-log-format.ts";
 import {
+	isPlacementAnchorReconciled,
+	placementAnchorMarkerFromData,
+} from "../../lib/placement-recovery.ts";
+import {
 	copyGeneratedImage,
 	findVaultRoot,
-	removeImagePlaceholder,
 	replaceImagePlaceholder,
 	resolvePaintOutputRoot,
 	validateGeneratedImageSource,
@@ -29,7 +32,7 @@ export default function teachImageAttachment(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use only with the source path returned by the ComfyUI generation tool.",
 			"Do not read or inspect the generated image; this tool copies it without exposing image bytes.",
-			"Use the supplied markerId and notePath. If generation fails, pass the exact error without a sourcePath to clear the placeholder.",
+			"Use the supplied markerId and notePath. If generation fails, pass the exact error without a sourcePath; the placeholder remains for the learner's recovery choice.",
 		],
 		parameters: Type.Object({
 			sourcePath: Type.Optional(Type.String({ minLength: 1 })),
@@ -94,16 +97,31 @@ export default function teachImageAttachment(pi: ExtensionAPI) {
 				}
 
 				if (errorMessage) {
-					removeImagePlaceholder(notePath, markerId);
-					pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, { markerId, status: "failed", error: errorMessage });
+					pi.appendEntry(TEACH_IMAGE_PLACEMENT_ENTRY, {
+						...placementData,
+						markerId,
+						status: "failed",
+						error: errorMessage,
+						notePath,
+					});
 					return {
-						content: [{ type: "text" as const, text: `Image placeholder cleared after generation failed: ${errorMessage}` }],
+						content: [{ type: "text" as const, text: `Image placement failed; placeholder preserved: ${errorMessage}` }],
 						details: { status: "failed", markerId, error: errorMessage },
 					};
 				}
 
 				if (!sourcePathArg || !topic || !captionTitle) {
 					throw new Error("Provide sourcePath, topic, and captionTitle for successful image placement.");
+				}
+				const marker = `%%pi-comfyui-image:${markerId}%%`;
+				if (typeof placementData?.anchor !== "string" ||
+					!isPlacementAnchorReconciled(
+						fs.readFileSync(notePath, "utf-8"),
+						placementData.anchor,
+						marker,
+						placementAnchorMarkerFromData(placementData, markerId),
+					)) {
+					throw new Error("The image insertion anchor is no longer reconciled with its placeholder.");
 				}
 				const outputRoot = resolvePaintOutputRoot(ctx.cwd);
 				const realSourcePath = validateGeneratedImageSource(
@@ -135,6 +153,7 @@ export default function teachImageAttachment(pi: ExtensionAPI) {
 					path: attached.path,
 					vaultRelativePath,
 					notePath,
+					anchorId: typeof placementData?.anchorId === "string" ? placementData.anchorId : undefined,
 					anchor: typeof placementData?.anchor === "string" ? placementData.anchor : undefined,
 					captionTitle,
 					caption,

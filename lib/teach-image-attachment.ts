@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { formatImageNote, TRANSCRIPT_END, TRANSCRIPT_START } from "./md-log-format.ts";
+import { placementAnchorMarker, removePlacementAnchorMarker } from "./placement-recovery.ts";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 
@@ -215,8 +216,14 @@ export function renameGeneratedImage(
  * renderer owns every position inside the managed section, so writing here too
  * would only drift. These helpers keep their signatures and validate arguments.
  */
-export function insertImagePlaceholder(notePath: string, markerId: string, insertAfter: string): string {
+export function insertImagePlaceholder(
+	notePath: string,
+	markerId: string,
+	insertAfter: string,
+	anchorId?: string,
+): string {
 	if (!/^[a-f0-9-]{36}$/i.test(markerId)) throw new Error("Image placeholder ID must be a UUID.");
+	if (anchorId !== undefined && !/^[a-f0-9-]{36}$/i.test(anchorId)) throw new Error("Image anchor ID must be a UUID.");
 	const anchor = insertAfter.trim();
 	if (!anchor) throw new Error("Image insertion anchor must contain non-whitespace text.");
 	const stat = fs.lstatSync(notePath);
@@ -224,6 +231,8 @@ export function insertImagePlaceholder(notePath: string, markerId: string, inser
 	const existing = fs.readFileSync(notePath, "utf-8");
 	const marker = `%%pi-comfyui-image:${markerId}%%`;
 	if (existing.includes(marker)) throw new Error(`Image placeholder already exists: ${markerId}`);
+	const idMarker = anchorId ? placementAnchorMarker(anchorId, markerId) : "";
+	if (idMarker && existing.includes(idMarker)) throw new Error(`Image anchor already exists: ${anchorId}`);
 	const managedStart = existing.lastIndexOf(TRANSCRIPT_START);
 	const managedContentStart = managedStart < 0 ? -1 : managedStart + TRANSCRIPT_START.length;
 	const managedEnd = managedContentStart < 0 ? -1 : existing.indexOf(TRANSCRIPT_END, managedContentStart);
@@ -237,21 +246,17 @@ export function insertImagePlaceholder(notePath: string, markerId: string, inser
 	const after = existing.slice(insertAt);
 	const separator = before.endsWith("\n") ? "\n" : "\n\n";
 	const trailingNewline = after.startsWith("\n") ? "" : "\n";
-	fs.writeFileSync(notePath, `${before}${separator}${marker}${trailingNewline}${after}`, "utf-8");
+	fs.writeFileSync(notePath, `${before}${separator}${idMarker ? `${idMarker}\n\n` : ""}${marker}${trailingNewline}${after}`, "utf-8");
 	return marker;
 }
 
 export function removeImagePlaceholder(notePath: string, markerId: string): void {
 	if (!/^[a-f0-9-]{36}$/i.test(markerId)) throw new Error("Image placeholder ID must be a UUID.");
 	const marker = `%%pi-comfyui-image:${markerId}%%`;
-	const existing = fs.readFileSync(notePath, "utf-8");
+	const existing = removePlacementAnchorMarker(fs.readFileSync(notePath, "utf-8"), markerId);
 	const firstIndex = existing.indexOf(marker);
 	if (firstIndex < 0) return;
-	const lineStart = existing.lastIndexOf("\n", firstIndex - 1) + 1;
-	const lineEnd = existing.indexOf("\n", firstIndex + marker.length);
-	const removeStart = lineStart === firstIndex ? lineStart : firstIndex;
-	const removeEnd = lineEnd < 0 ? existing.length : lineEnd + 1;
-	fs.writeFileSync(notePath, `${existing.slice(0, removeStart)}${existing.slice(removeEnd)}`, "utf-8");
+	fs.writeFileSync(notePath, `${existing.slice(0, firstIndex)}${existing.slice(firstIndex + marker.length)}`, "utf-8");
 }
 
 export function replaceImagePlaceholder(

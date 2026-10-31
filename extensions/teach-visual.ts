@@ -11,6 +11,7 @@ import {
 } from "../lib/md-log-format.ts";
 import { findVaultRoot } from "../lib/teach-image-attachment.ts";
 import { insertVisualPlaceholder, removeVisualPlaceholder } from "../lib/teach-visual-attachment.ts";
+import { recoverUnresolvedPlacement } from "../lib/placement-recovery-ui.ts";
 import { readLinkedNotePath } from "../lib/teach-learning-state.ts";
 import { withMdLogWriteLock } from "../lib/md-log-write-lock.ts";
 
@@ -42,6 +43,73 @@ function isBackgroundAgentResult(value: unknown): value is { status: "background
 
 export default function teachVisual(pi: ExtensionAPI) {
 	const authorizedAgentCalls = new Set<string>();
+	const activeAgents = new Map<string, { markerId: string; notePath: string; anchor: string; kind: VisualKind; ctx: any }>();
+	const earlyCompletions = new Map<string, Record<string, unknown>>();
+
+	function latestPlacement(ctx: any, markerId: string): Record<string, unknown> | undefined {
+		const entries = ctx.sessionManager.getEntries();
+		for (let index = entries.length - 1; index >= 0; index--) {
+			const entry = entries[index];
+			if (isRecord(entry) && entry.type === "custom" &&
+				entry.customType === TEACH_VISUAL_PLACEMENT_ENTRY && isRecord(entry.data) &&
+				entry.data.markerId === markerId) return entry.data;
+		}
+		return undefined;
+	}
+
+	async function recover(markerId: string, notePath: string, kind: VisualKind, ctx: any, event: unknown): Promise<void> {
+		const marker = `%%pi-visual:${kind}:${markerId}%%`;
+		await recoverUnresolvedPlacement(ctx, {
+			markerId,
+			generator: VISUAL_MAKERS[kind],
+			kind: `${kind} picture`,
+			status: "unresolved",
+			notePath,
+		}, event, {
+			remove: () => withMdLogWriteLock(() => {
+				const placement = latestPlacement(ctx, markerId);
+				const note = fs.readFileSync(notePath, "utf-8");
+				const firstIndex = note.indexOf(marker);
+				if (firstIndex < 0 || note.indexOf(marker, firstIndex + marker.length) >= 0) {
+					throw new Error("The exact visual marker is missing or duplicated; it was not removed.");
+				}
+				removeVisualPlaceholder(notePath, kind, markerId);
+				pi.appendEntry(TEACH_VISUAL_PLACEMENT_ENTRY, {
+					...placement, markerId, visualKind: kind, status: "cancelled", notePath,
+				});
+			}),
+		});
+	}
+
+	async function finalizeAgent(event: Record<string, unknown>): Promise<void> {
+		if ((event.type !== VISUAL_MAKERS.mermaid && event.type !== VISUAL_MAKERS.svg) ||
+			typeof event.id !== "string") return;
+		const agentId = event.id;
+		const request = activeAgents.get(agentId);
+		if (!request) {
+			earlyCompletions.set(agentId, event);
+			return;
+		}
+		activeAgents.delete(agentId);
+		const placement = latestPlacement(request.ctx, request.markerId);
+		if (placement?.status === "placed" || placement?.status === "cancelled") return;
+		if (placement?.status !== "failed") {
+			pi.appendEntry(TEACH_VISUAL_PLACEMENT_ENTRY, {
+				...placement,
+				markerId: request.markerId,
+				visualKind: request.kind,
+				status: "failed",
+				error: "The visual generator returned without a confirmed placement.",
+				notePath: request.notePath,
+				anchor: request.anchor,
+			});
+		}
+		await recover(request.markerId, request.notePath, request.kind, request.ctx, event);
+	}
+
+	pi.events?.on("subagents:completed", (data) => { if (isRecord(data)) return finalizeAgent(data); });
+	pi.events?.on("subagents:failed", (data) => { if (isRecord(data)) return finalizeAgent(data); });
+
 	pi.on("tool_call", (event) => {
 		if (event.toolName !== "Agent" || !isRecord(event.input)) return;
 		const type = event.input.subagent_type;
@@ -84,7 +152,7 @@ export default function teachVisual(pi: ExtensionAPI) {
 			const insertAfter = params.insertAfter.trim();
 			if (!insertAfter) throw new Error("Visual insertion anchor must contain non-whitespace text.");
 
-			const { markerId, notePath } = await withMdLogWriteLock(() => {
+			const { markerId, anchorId, notePath } = await withMdLogWriteLock(() => {
 				const linkedNote = readLinkedNotePath(ctx.sessionManager.getEntries());
 				if (!linkedNote) throw new Error("Link the current lesson note with /md-log before requesting a diagram.");
 				const resolvedNote = path.isAbsolute(linkedNote) ? linkedNote : path.resolve(ctx.cwd, linkedNote);
@@ -94,9 +162,11 @@ export default function teachVisual(pi: ExtensionAPI) {
 					throw new Error("Visual insertion anchor must be exact text from the managed linked-note transcript.");
 				}
 				const id = randomUUID();
-				insertVisualPlaceholder(resolvedNote, kind, id, insertAfter);
+				const anchorId = randomUUID();
+				insertVisualPlaceholder(resolvedNote, kind, id, insertAfter, anchorId);
 				pi.appendEntry(TEACH_VISUAL_PLACEMENT_ENTRY, {
 					markerId: id,
+					anchorId,
 					visualKind: kind,
 					status: "pending",
 					notePath: resolvedNote,
@@ -104,14 +174,14 @@ export default function teachVisual(pi: ExtensionAPI) {
 					captionTitle,
 					caption,
 				});
-				return { markerId: id, notePath: resolvedNote };
+				return { markerId: id, anchorId, notePath: resolvedNote };
 			});
 
 			const subagentPrompt = [
 				`Create one ${VISUAL_KINDS[kind].label.toLowerCase()} for this brief. Interpret it yourself and make all composition choices.`,
 				"Follow your normal authoring loop: write, preview-render, LOOK at the result, iterate until it is correct and clean, then publish with save_as.",
 				"After publishing, call teach_attach_generated_visual with the exact published path, the exact captionTitle and caption below, and the markerId and notePath below. That tool replaces the note marker with a titled quote block and an embed.",
-				"If you cannot produce a correct picture, call teach_attach_generated_visual with markerId, notePath, and the exact reason (no sourcePath, captionTitle, or caption) to clear the placeholder; then return that reason.",
+				"If you cannot produce a correct picture, call teach_attach_generated_visual with markerId, notePath, and the exact reason (no sourcePath, captionTitle, or caption). The marker is preserved for the learner's recovery choice; return the exact reason.",
 				"",
 				`Brief: ${brief}`,
 				`Caption: ${caption}`,
@@ -121,9 +191,9 @@ export default function teachVisual(pi: ExtensionAPI) {
 			].join("\n");
 
 			const recordFailure = (failure: string) => withMdLogWriteLock(() => {
-				removeVisualPlaceholder(notePath, kind, markerId);
 				pi.appendEntry(TEACH_VISUAL_PLACEMENT_ENTRY, {
 					markerId,
+					anchorId,
 					visualKind: kind,
 					status: "failed",
 					error: failure,
@@ -147,6 +217,7 @@ export default function teachVisual(pi: ExtensionAPI) {
 			} catch (error) {
 				const failure = error instanceof Error ? error.message : String(error);
 				await recordFailure(failure);
+				await recover(markerId, notePath, kind, ctx, { result: failure });
 				throw error;
 			} finally {
 				authorizedAgentCalls.delete(toolCallId);
@@ -156,6 +227,7 @@ export default function teachVisual(pi: ExtensionAPI) {
 			if (outcome.isError || !isBackgroundAgentResult(backgroundAgent)) {
 				const failure = resultText(outcome.result) || `The ${kind}-maker subagent could not be started.`;
 				await recordFailure(failure);
+				await recover(markerId, notePath, kind, ctx, outcome.result);
 				throw new Error(failure);
 			}
 
@@ -169,6 +241,12 @@ export default function teachVisual(pi: ExtensionAPI) {
 				captionTitle,
 				caption,
 			});
+			activeAgents.set(backgroundAgent.agentId, { markerId, notePath, anchor: insertAfter, kind, ctx });
+			const earlyCompletion = earlyCompletions.get(backgroundAgent.agentId);
+			if (earlyCompletion) {
+				earlyCompletions.delete(backgroundAgent.agentId);
+				void finalizeAgent(earlyCompletion);
+			}
 			return {
 				content: [{ type: "text" as const, text: `${VISUAL_KINDS[kind].label} request started in the background; a placeholder is in the linked note.` }],
 				details: { status: "dispatched", agentId: backgroundAgent.agentId, markerId },

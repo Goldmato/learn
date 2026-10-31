@@ -11,10 +11,12 @@ import {
 	renderAudioTranscriptCallout,
 	replaceManagedTranscript,
 	renderTranscript,
+	TEACH_IMAGE_PLACEMENT_ENTRY,
 	TEACH_BREEZE_TTS_PLACEMENT_ENTRY,
 	TRANSCRIPT_END,
 	TRANSCRIPT_START,
 } from "../lib/md-log-format.ts";
+import { placementAnchorMarker } from "../lib/placement-recovery.ts";
 
 /**
  * Split a rendered transcript back into blocks so placement tests can exercise
@@ -43,6 +45,59 @@ function blocksFromTranscript(markdown) {
 function renderPlacements(transcript, entries, notePath, durableMarkdown = "") {
 	return renderTranscript(applyPlacements(blocksFromTranscript(transcript), entries, notePath, durableMarkdown));
 }
+
+test("stable image placement stays with its repeated anchor through transcript refresh", () => {
+	const notePath = "C:\\vault\\lesson.md";
+	const markerId = "91accc63-53db-4d7f-9f04-790f6879ee2a";
+	const anchorId = "64e2a2eb-5d4d-4987-89df-5bed565d0c87";
+	const anchor = "Repeat this sentence.";
+	const anchorMarker = placementAnchorMarker(anchorId, markerId);
+	const imageMarker = `%%pi-comfyui-image:${markerId}%%`;
+	const entries = [
+		{ id: "session", type: "session" },
+		{
+			id: "placement-pending",
+			parentId: "session",
+			type: "custom",
+			customType: TEACH_IMAGE_PLACEMENT_ENTRY,
+			data: {
+				markerId,
+				anchorId,
+				status: "pending",
+				notePath,
+				anchor,
+				captionTitle: "Repeated passage",
+				caption: "A generated image belongs after this passage.",
+			},
+		},
+	];
+	const transcript = `> [!quote] YOU\n\n${anchor} Some other text. ${anchor}`;
+	const durableMarkdown = `${TRANSCRIPT_START}\n${anchor} Some other text. ${anchor} ${anchorMarker}\n${imageMarker}\n${TRANSCRIPT_END}`;
+	const rendered = renderPlacements(transcript, entries, notePath, durableMarkdown);
+
+	assert.ok(rendered.indexOf(anchorMarker) > rendered.lastIndexOf(anchor));
+	assert.ok(rendered.indexOf(imageMarker) > rendered.indexOf(anchorMarker));
+	assert.equal(rendered.indexOf(imageMarker) > rendered.lastIndexOf(anchor), true);
+
+	assert.throws(
+		() => renderPlacements(transcript, entries, notePath),
+		/Cannot safely reconcile Generated placement/,
+	);
+	const uniqueTranscript = `> [!quote] YOU\n\n${anchor}`;
+	const uniqueFallback = renderPlacements(uniqueTranscript, entries, notePath);
+	assert.match(uniqueFallback, new RegExp(anchorMarker));
+
+	const cancelledEntries = entries.concat({
+		id: "placement-cancelled",
+		parentId: "placement-pending",
+		type: "custom",
+		customType: TEACH_IMAGE_PLACEMENT_ENTRY,
+		data: { ...entries[1].data, status: "cancelled" },
+	});
+	const cancelled = renderPlacements(transcript, cancelledEntries, notePath);
+	assert.doesNotMatch(cancelled, /pi-placement-anchor/);
+	assert.doesNotMatch(cancelled, /pi-comfyui-image:/);
+});
 
 function quizBlock(callId, question, selectedIndex, correctIndex, overrides = {}) {
 	return {

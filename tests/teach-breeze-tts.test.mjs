@@ -85,6 +85,7 @@ test("audio helpers insert, validate, attach, link, and remove exact WAV placeho
 	const outputRoot = path.join(root, "outputs");
 	const sourcePath = path.join(outputRoot, "point.wav");
 	const markerId = "e9bf16f0-8071-4f9d-9f60-5fcce8cf09a7";
+	const anchorId = "64e2a2eb-5d4d-4987-89df-5bed565d0c87";
 	fs.mkdirSync(path.join(vaultRoot, ".obsidian"), { recursive: true });
 	fs.mkdirSync(outputRoot);
 	fs.writeFileSync(notePath, "# Lesson\n\n%% pi-md-log:start v1 %%\n\nA concept depends on its foundation.\n\n%% pi-md-log:end v1 %%\n", "utf-8");
@@ -93,9 +94,10 @@ test("audio helpers insert, validate, attach, link, and remove exact WAV placeho
 	try {
 		assert.equal(findAudioVaultRoot(notePath), vaultRoot);
 		assert.equal(validateGeneratedAudioSource(sourcePath, outputRoot), sourcePath);
-		insertAudioPlaceholder(notePath, markerId, "A concept depends on its foundation.");
+		insertAudioPlaceholder(notePath, markerId, "A concept depends on its foundation.", anchorId);
 		const placeholder = `%%pi-breeze-tts:${markerId}%%`;
 		assert.match(fs.readFileSync(notePath, "utf-8"), new RegExp(placeholder));
+		assert.match(fs.readFileSync(notePath, "utf-8"), new RegExp(`%%pi-placement-anchor:${anchorId}:${markerId}%%`));
 		// A lost anchor no longer fails the request; the marker is appended instead.
 		insertAudioPlaceholder(notePath, "e9bf16f0-8071-4f9d-9f60-5fcce8cf09a8", "not in the note");
 		assert.match(fs.readFileSync(notePath, "utf-8"), /%%pi-breeze-tts:e9bf16f0-8071-4f9d-9f60-5fcce8cf09a8%%\n\n%% pi-md-log:end v1 %%/);
@@ -583,6 +585,13 @@ test("main agent finalizes a staged WAV after background subagent completion", a
 	try {
 		const tool = fixture.registeredTools.get("teach_breeze_tts");
 		const dispatched = await tool.execute("tts", { conceptText: fixture.conceptText }, undefined, undefined, fixture.ctx);
+		const pending = fixture.entries.find((entry) =>
+			entry.customType === TEACH_BREEZE_TTS_PLACEMENT_ENTRY &&
+			entry.data.markerId === dispatched.details.markerId &&
+			entry.data.status === "pending",
+		);
+		assert.ok(pending);
+		assert.match(pending.data.anchorId, /^[a-f0-9-]{36}$/i);
 		assert.equal(dispatched.details.status, "dispatched");
 		const prompt = fixture.toolCalls[0].args.prompt;
 		const handoffPath = /^handoffPath: (.+)$/m.exec(prompt)?.[1];
@@ -613,7 +622,8 @@ test("main agent finalizes a staged WAV after background subagent completion", a
 		assert.ok(fixture.entries.some((entry) =>
 			entry.customType === TEACH_BREEZE_TTS_PLACEMENT_ENTRY &&
 			entry.data.markerId === dispatched.details.markerId &&
-			entry.data.status === "placed",
+			entry.data.status === "placed" &&
+			typeof entry.data.anchorId === "string",
 		));
 		assert.equal(fs.existsSync(handoffDirectory), false, "the main agent cleans the staged handoff after placement");
 	} finally {

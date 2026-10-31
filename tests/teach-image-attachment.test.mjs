@@ -119,10 +119,12 @@ test("image placement markers preserve later note edits and stay quiet during md
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "teach-image-tools-"));
 	const notePath = path.join(root, "lesson.md");
 	const markerId = "91accc63-53db-4d7f-9f04-790f6879ee2a";
+	const anchorId = "64e2a2eb-5d4d-4987-89df-5bed565d0c87";
 	fs.writeFileSync(notePath, "# Lesson\n\n%% pi-md-log:start v1 %%\n\nIntro text.\n\n%% pi-md-log:end v1 %%\n", "utf-8");
 
 	try {
-		insertImagePlaceholder(notePath, markerId, "Intro text.");
+		insertImagePlaceholder(notePath, markerId, "Intro text.", anchorId);
+		assert.match(fs.readFileSync(notePath, "utf-8"), new RegExp(`%%pi-placement-anchor:${anchorId}:${markerId}%%`));
 		assert.ok(fs.readFileSync(notePath, "utf-8").includes(`%%pi-comfyui-image:${markerId}%%`));
 		fs.appendFileSync(notePath, "\nNew note text added while ComfyUI was running.\n", "utf-8");
 		replaceImagePlaceholder(
@@ -133,6 +135,7 @@ test("image placement markers preserve later note edits and stay quiet during md
 			"This diagram shows how a prism separates white light into its component colors.",
 		);
 		const note = fs.readFileSync(notePath, "utf-8");
+		assert.match(note, new RegExp(`%%pi-placement-anchor:${anchorId}:${markerId}%%`));
 		assert.ok(note.includes("![[001-Attachments/~comfyui/comfyui-prismatic-glass-refraction-1.png]]"));
 		assert.ok(note.includes("> [!quote] Prism Refraction\n> *\"This diagram shows how a prism separates white light into its component colors.\"*"));
 		assert.ok(note.includes("New note text added while ComfyUI was running."));
@@ -240,7 +243,7 @@ test("registered attachment tool duplicates the image and replaces the marker af
 	}
 });
 
-test("attachment tool clears its marker when the generator reports an error", {
+test("attachment tool preserves its marker when the generator reports an error", {
 	skip: !registerImageTools,
 }, async () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "teach-image-failure-cleanup-"));
@@ -274,7 +277,7 @@ test("attachment tool clears its marker when the generator reports an error", {
 			sessionManager: { getEntries: () => entries },
 		});
 		assert.equal(result.details.status, "failed");
-		assert.doesNotMatch(fs.readFileSync(notePath, "utf-8"), /%%pi-comfyui-image:/);
+		assert.match(fs.readFileSync(notePath, "utf-8"), new RegExp(`%%pi-comfyui-image:${markerId}%%`));
 		assert.ok(entries.some((entry) => entry.data?.status === "failed" && entry.data.error === "ComfyUI generation timed out"));
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });

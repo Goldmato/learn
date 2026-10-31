@@ -10,9 +10,12 @@ import {
 	VISUAL_KINDS,
 	visualMarker,
 } from "../../lib/md-log-format.ts";
+import {
+	isPlacementAnchorReconciled,
+	placementAnchorMarkerFromData,
+} from "../../lib/placement-recovery.ts";
 import { findVaultRoot } from "../../lib/teach-image-attachment.ts";
 import {
-	removeVisualPlaceholder,
 	replaceVisualPlaceholder,
 	validatePublishedVisual,
 } from "../../lib/teach-visual-attachment.ts";
@@ -31,7 +34,7 @@ export default function teachVisualAttachment(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Use only with the path returned by render_mermaid or render_svg after publishing with save_as.",
 			"Do not read or inspect the PNG; this tool only validates and links it.",
-			"Use the supplied markerId, notePath, and kind. If authoring failed, pass the exact reason without a sourcePath to clear the placeholder.",
+			"Use the supplied markerId, notePath, and kind. If authoring failed, pass the exact reason without a sourcePath; the placeholder remains for the learner's recovery choice.",
 		],
 		parameters: Type.Object({
 			kind: Type.Union([Type.Literal("mermaid"), Type.Literal("svg")]),
@@ -94,16 +97,32 @@ export default function teachVisualAttachment(pi: ExtensionAPI) {
 				}
 
 				if (errorMessage) {
-					removeVisualPlaceholder(notePath, kind, markerId);
-					pi.appendEntry(TEACH_VISUAL_PLACEMENT_ENTRY, { markerId, visualKind: kind, status: "failed", error: errorMessage });
+					pi.appendEntry(TEACH_VISUAL_PLACEMENT_ENTRY, {
+						...placementData,
+						markerId,
+						visualKind: kind,
+						status: "failed",
+						error: errorMessage,
+						notePath,
+					});
 					return {
-						content: [{ type: "text" as const, text: `Visual placeholder cleared after authoring failed: ${errorMessage}` }],
+						content: [{ type: "text" as const, text: `Visual placement failed; placeholder preserved: ${errorMessage}` }],
 						details: { status: "failed", markerId, error: errorMessage },
 					};
 				}
 
 				if (!sourcePathArg || !captionTitle || !caption) {
 					throw new Error("Provide sourcePath, captionTitle, and caption for a published picture.");
+				}
+				const marker = visualMarker(kind, markerId);
+				if (typeof placementData?.anchor !== "string" ||
+					!isPlacementAnchorReconciled(
+						fs.readFileSync(notePath, "utf-8"),
+						placementData.anchor,
+						marker,
+						placementAnchorMarkerFromData(placementData, markerId),
+					)) {
+					throw new Error("The visual insertion anchor is no longer reconciled with its placeholder.");
 				}
 				const vaultRelativePath = validatePublishedVisual(path.resolve(ctx.cwd, sourcePathArg), vaultRoot, kind);
 				replaceVisualPlaceholder(notePath, kind, markerId, vaultRelativePath, captionTitle, caption);
@@ -115,6 +134,7 @@ export default function teachVisualAttachment(pi: ExtensionAPI) {
 					sourcePath: path.resolve(ctx.cwd, sourcePathArg),
 					vaultRelativePath,
 					notePath,
+					anchorId: typeof placementData?.anchorId === "string" ? placementData.anchorId : undefined,
 					anchor: typeof placementData?.anchor === "string" ? placementData.anchor : undefined,
 					captionTitle,
 					caption,
