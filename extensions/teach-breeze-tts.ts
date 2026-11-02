@@ -203,7 +203,9 @@ export default function teachBreezeTts(pi: ExtensionAPI) {
 			ctx.cwd,
 			path.dirname(fileURLToPath(import.meta.url)),
 		);
-		const loaded = loadBreezeVoicePresets(manifestPath);
+		const extensionRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+		const localConfigRoot = fs.existsSync(path.join(ctx.cwd, "local-paths.json")) ? ctx.cwd : extensionRoot;
+		const loaded = loadBreezeVoicePresets(manifestPath, localConfigRoot);
 		for (const diagnostic of loaded.diagnostics) ctx.ui.notify(`Breeze voice manifest: ${diagnostic}`, "warning");
 		const storedPreset = findBreezeVoicePresetByName(storedName, loaded.presets);
 		if (storedPreset) {

@@ -62,6 +62,7 @@ function createTtsFixture(outcomes = []) {
 		},
 	};
 	fs.mkdirSync(path.join(vaultRoot, ".obsidian"), { recursive: true });
+	fs.writeFileSync(path.join(root, "local-paths.json"), JSON.stringify({ version: 1 }), "utf-8");
 	fs.writeFileSync(notePath, `---\nbreeze-voice-preset: "Standard Breeze voice"\n---\n\n# Lesson\n\n%% pi-md-log:start v1 %%\n\n> [!abstract] PI\n\n${conceptText}\n\n%% pi-md-log:end v1 %%\n`, "utf-8");
 	registerTeachBreezeTts(pi);
 	const ctx = {
@@ -328,10 +329,12 @@ test("isolated Breeze generator does not receive or manipulate the linked note",
 
 test("Breeze wrapper uses audio.cpp clone task", () => {
 	const wrapper = fs.readFileSync(new URL("../scripts/breeze-tts.cmd", import.meta.url), "utf-8");
-	assert.match(wrapper, /BREEZE_TTS_TASK=clon/);
-	assert.match(wrapper, /CUDA\\v13\.4\\bin\\x64/);
-	assert.match(wrapper, /CUDA_PATH%\\bin\\x64/);
-	assert.match(wrapper, /--task "%BREEZE_TTS_TASK%" --family breeze_tts/);
+	const powershell = fs.readFileSync(new URL("../scripts/breeze-tts.ps1", import.meta.url), "utf-8");
+	assert.match(wrapper, /breeze-tts\.ps1/);
+	assert.match(powershell, /local-paths\.json/);
+	assert.match(powershell, /audioCppRoot/);
+	assert.match(powershell, /cudaRootDirectory/);
+	assert.match(powershell, /--task \$env:BREEZE_TTS_TASK --family breeze_tts/);
 });
 
 test("main Breeze tool dispatches only logged points, preserves failures for retry, and cancels on request", async () => {

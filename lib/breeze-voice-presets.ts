@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readLocalPaths } from "./local-paths.ts";
 import { listVoiceReferences, type BreezeVoicePreset } from "./teach-breeze-tts.ts";
 
 export const BREEZE_VOICE_PRESET_ENTRY = "breeze-voice-preset";
@@ -98,15 +99,19 @@ export function updateBreezeVoicePresetFrontmatter(markdown: string, name: strin
 	return `${markdown.slice(0, bounds.start)}${lines.join(newline)}${markdown.slice(bounds.end)}`;
 }
 
-export function loadBreezeVoicePresets(manifestPath: string): { presets: BreezeVoicePreset[]; diagnostics: string[] } {
-	let manifest: unknown;
+export function loadBreezeVoicePresets(
+	manifestPath: string,
+	localConfigRoot = path.dirname(path.resolve(manifestPath)),
+): { presets: BreezeVoicePreset[]; diagnostics: string[] } {
+	let manifest: unknown = { version: 1, presets: [] };
 	try {
 		const stat = fs.lstatSync(manifestPath);
 		if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("manifest path is not a regular file");
 		manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
 	} catch (error) {
-		if (isRecord(error) && error.code === "ENOENT") return { presets: [], diagnostics: [] };
-		throw new Error(`Could not load Breeze voice manifest "${manifestPath}": ${error instanceof Error ? error.message : String(error)}`);
+		if (!isRecord(error) || error.code !== "ENOENT") {
+			throw new Error(`Could not load Breeze voice manifest "${manifestPath}": ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 	if (!isRecord(manifest) || manifest.version !== 1 || !Array.isArray(manifest.presets)) {
 		throw new Error(`Breeze voice manifest "${manifestPath}" must contain version 1 and a presets array.`);
@@ -116,7 +121,29 @@ export function loadBreezeVoicePresets(manifestPath: string): { presets: BreezeV
 	const diagnostics: string[] = [];
 	const seenIds = new Set<string>([STANDARD_BREEZE_VOICE_PRESET.id]);
 	const seenNames = new Set<string>();
-	for (const [index, rawPreset] of manifest.presets.entries()) {
+	const config = readLocalPaths(localConfigRoot);
+	const voiceValues = [
+		config.breezeVoice.name,
+		config.breezeVoice.wavsDirectory,
+		config.breezeVoice.transcriptsDirectory,
+	];
+	const hasConfiguredVoice = voiceValues.some(Boolean);
+	const configuredVoice = hasConfiguredVoice && voiceValues.every(Boolean)
+		? [{
+			id: config.breezeVoice.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+			name: config.breezeVoice.name,
+			wavsDirectory: path.isAbsolute(config.breezeVoice.wavsDirectory)
+				? path.normalize(config.breezeVoice.wavsDirectory)
+				: path.resolve(localConfigRoot, config.breezeVoice.wavsDirectory),
+			transcriptsDirectory: path.isAbsolute(config.breezeVoice.transcriptsDirectory)
+				? path.normalize(config.breezeVoice.transcriptsDirectory)
+				: path.resolve(localConfigRoot, config.breezeVoice.transcriptsDirectory),
+		}]
+		: [];
+	if (hasConfiguredVoice && configuredVoice.length === 0) {
+		diagnostics.push("Skipped the default Breeze clone: configure its name and both folders with /configure-paths.");
+	}
+	for (const [index, rawPreset] of [...manifest.presets, ...configuredVoice].entries()) {
 		const label = `preset ${index + 1}`;
 		if (!isRecord(rawPreset)) {
 			diagnostics.push(`Skipped ${label}: expected a JSON object.`);

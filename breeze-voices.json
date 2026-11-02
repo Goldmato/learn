@@ -1,11 +1,4 @@
 {
   "version": 1,
-  "presets": [
-    {
-      "id": "cave-johnson",
-      "name": "Cave Johnson",
-      "wavsDirectory": "G:\\Sounds\\cave-johnson\\wavs",
-      "transcriptsDirectory": "G:\\Sounds\\cave-johnson\\transcripts"
-    }
-  ]
+  "presets": []
 }

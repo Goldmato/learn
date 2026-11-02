@@ -118,6 +118,61 @@ test("manifest resolution falls back to the extension config when cwd is the vau
 	}
 });
 
+test("local path config supplies the default clone preset without embedding user paths in the manifest", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "breeze-local-paths-"));
+	const configRoot = path.join(root, ".pi");
+	const vaultRoot = path.join(root, "vault");
+	const wavs = path.join(root, "voice", "wavs");
+	const transcripts = path.join(root, "voice", "transcripts");
+	const manifestPath = path.join(vaultRoot, "breeze-voices.json");
+	fs.mkdirSync(configRoot, { recursive: true });
+	fs.mkdirSync(vaultRoot);
+	fs.mkdirSync(wavs, { recursive: true });
+	fs.mkdirSync(transcripts);
+	writeWav(path.join(wavs, "123456.wav"));
+	fs.writeFileSync(path.join(transcripts, "123456-transcript.txt"), "A configured reference transcript.");
+	fs.writeFileSync(path.join(configRoot, "local-paths.json"), JSON.stringify({
+		version: 1,
+		breezeVoice: {
+			name: "Configured Narrator",
+			wavsDirectory: wavs,
+			transcriptsDirectory: transcripts,
+		},
+	}));
+	try {
+		const loaded = loadBreezeVoicePresets(manifestPath, configRoot);
+		assert.deepEqual(loaded.presets.map(({ id, name, wavsDirectory, transcriptsDirectory }) => ({
+			id,
+			name,
+			wavsDirectory,
+			transcriptsDirectory,
+		})), [{
+			id: "configured-narrator",
+			name: "Configured Narrator",
+			wavsDirectory: wavs,
+			transcriptsDirectory: transcripts,
+		}]);
+		assert.deepEqual(loaded.diagnostics, []);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("incomplete default clone settings produce a diagnostic", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "breeze-incomplete-paths-"));
+	fs.writeFileSync(path.join(root, "local-paths.json"), JSON.stringify({
+		version: 1,
+		breezeVoice: { name: "Configured Narrator" },
+	}));
+	try {
+		const loaded = loadBreezeVoicePresets(path.join(root, "missing-manifest.json"));
+		assert.deepEqual(loaded.presets, []);
+		assert.match(loaded.diagnostics[0], /configure its name and both folders/);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("session voice selection restores the latest preset and reports malformed state", () => {
 	const standard = { type: "custom", customType: BREEZE_VOICE_PRESET_ENTRY, data: { preset: STANDARD_BREEZE_VOICE_PRESET } };
 	const clone = {

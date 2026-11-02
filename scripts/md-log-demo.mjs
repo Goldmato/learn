@@ -1,13 +1,28 @@
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	buildBackfill,
 	replaceManagedTranscript,
 	renderTranscript,
 } from "../lib/md-log-format.ts";
 
-export const defaultPath = "C:\\Users\\sambe\\Documents\\Potato Vault\\002-Testing\\md-log-transcript-demo.md";
+const localPathsPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "local-paths.json");
+let configuredDemoPath;
+try {
+	const config = JSON.parse(fs.readFileSync(localPathsPath, "utf-8"));
+	if (!config || typeof config !== "object" || Array.isArray(config)
+		|| config.version !== 1 || typeof config.mdLogDemoOutput !== "string") {
+		throw new Error(`Local path config has an invalid mdLogDemoOutput: ${localPathsPath}`);
+	}
+	configuredDemoPath = config.mdLogDemoOutput.trim()
+		? path.resolve(path.dirname(localPathsPath), config.mdLogDemoOutput)
+		: undefined;
+} catch (error) {
+	if (error?.code !== "ENOENT") throw error;
+}
+
+export const defaultPath = configuredDemoPath;
 
 export const demoEntries = [
 	{ id: "root", type: "session" },
@@ -155,6 +170,9 @@ export const demoEntries = [
 ];
 
 export function writeDemo(outputPath = defaultPath) {
+	if (!outputPath) {
+		throw new Error("Set mdLogDemoOutput in local-paths.json with /configure-paths, or pass --output <path>.");
+	}
 	const resolvedPath = path.resolve(outputPath);
 	const backfill = buildBackfill(demoEntries);
 	if (backfill.diagnostics.length > 0) {
@@ -176,6 +194,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
 	if (outputIndex >= 0 && (!outputArgument || outputArgument.startsWith("--"))) {
 		throw new Error("Usage: node --experimental-strip-types scripts/md-log-demo.mjs [--output <path>]");
 	}
-	const result = writeDemo(outputArgument || defaultPath);
+	const result = writeDemo(outputArgument ?? defaultPath);
 	console.log(`Demo written to ${result.path} (${result.entries} session entries backfilled)`);
 }

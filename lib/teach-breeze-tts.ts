@@ -5,12 +5,11 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const AUDIO_MARKER_PREFIX = "%%pi-breeze-tts:";
 const AUDIO_EXTENSIONS = new Set([".wav"]);
 const MAX_CAPTURED_OUTPUT = 32_000;
-const DEFAULT_VOICE_WAVS = String.raw`G:\Sounds\cave-johnson\wavs`;
-const DEFAULT_VOICE_TRANSCRIPTS = String.raw`G:\Sounds\cave-johnson\transcripts`;
 const MAX_REFERENCE_TRANSCRIPT_BYTES = 128 * 1024;
 
 export interface GeneratedAudio {
@@ -78,8 +77,8 @@ function validateReferenceWav(filePath: string): string {
 }
 
 export function listVoiceReferences(
-	wavsDirectory = DEFAULT_VOICE_WAVS,
-	transcriptsDirectory = DEFAULT_VOICE_TRANSCRIPTS,
+	wavsDirectory: string,
+	transcriptsDirectory: string,
 	voiceName = path.basename(path.dirname(path.resolve(wavsDirectory))),
 ): VoiceReference[] {
 	for (const [label, directory] of [["WAV", wavsDirectory], ["transcript", transcriptsDirectory]] as const) {
@@ -127,8 +126,8 @@ export function listVoiceReferences(
 }
 
 export function selectRandomVoiceReference(
-	wavsDirectory = DEFAULT_VOICE_WAVS,
-	transcriptsDirectory = DEFAULT_VOICE_TRANSCRIPTS,
+	wavsDirectory: string,
+	transcriptsDirectory: string,
 	voiceName?: string,
 ): VoiceReference {
 	const candidates = listVoiceReferences(wavsDirectory, transcriptsDirectory, voiceName);
@@ -398,8 +397,9 @@ function runBreezeCommand(
 			"try {",
 			"$request = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd())) | ConvertFrom-Json;",
 			`$env:BREEZE_TTS_TASK = '${task}';`,
-			"$command = Get-Command 'breeze-tts.cmd' -ErrorAction Stop;",
-			"& $command.Source '--request-sequence' $request.requestPath '--out-dir' $request.outputDir;",
+			"$command = Join-Path $env:PI_LEARN_CONFIG_ROOT 'scripts\\breeze-tts.cmd';",
+			"if (-not (Test-Path -LiteralPath $command -PathType Leaf)) { throw \"Breeze wrapper not found: $command\" };",
+			"& $command '--request-sequence' $request.requestPath '--out-dir' $request.outputDir;",
 			"exit $LASTEXITCODE;",
 			"} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 127 }",
 		].join(" ");
@@ -411,7 +411,11 @@ function runBreezeCommand(
 			{
 				windowsHide: true,
 				signal,
-				env: { ...process.env, BREEZE_TTS_TASK: task },
+				env: {
+					...process.env,
+					BREEZE_TTS_TASK: task,
+					PI_LEARN_CONFIG_ROOT: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+				},
 			},
 		);
 		child.stdin?.once("error", (error) => {

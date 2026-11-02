@@ -47,7 +47,7 @@ test("demo markdown is generated from session backfill with expanded teaching fo
 	}
 });
 
-test("updated Potato Vault demo matches a fresh md-log backfill", { skip: !fs.existsSync(defaultPath) }, () => {
+test("updated configured demo matches a fresh md-log backfill", { skip: !defaultPath || !fs.existsSync(defaultPath) }, () => {
 	const note = fs.readFileSync(defaultPath, "utf-8");
 	const backfill = buildBackfill(demoEntries);
 	assert.deepEqual(backfill.diagnostics, []);
