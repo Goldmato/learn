@@ -154,3 +154,13 @@ __pycache__/
 .venv/
 .memory/
 /local-paths.json
+/paint-jobs/
+
+# Machine-specific Pi configuration and local handoff notes
+/.pi/
+/settings.json
+/subagents.json
+/defender.yaml
+/comfyui-paint.json
+/breeze-voices.json
+/PI-Agent-Teacher-Improvements-Execution-Plan.md

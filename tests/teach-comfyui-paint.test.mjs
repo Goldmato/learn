@@ -247,8 +247,14 @@ test("image maker is model-pinned and has only generation, status, and attachmen
 });
 
 test("ComfyUI Paint package is not loaded globally into the main agent", () => {
-	const settings = JSON.parse(fs.readFileSync(new URL("../settings.json", import.meta.url), "utf-8"));
-	assert.equal(settings.packages?.includes("npm:pi-comfyui-paint@0.3.0") ?? false, false);
+	const settingsUrl = new URL("../settings.json", import.meta.url);
+	if (fs.existsSync(settingsUrl)) {
+		const settings = JSON.parse(fs.readFileSync(settingsUrl, "utf-8"));
+		const paintPackage = settings.packages?.some((entry) =>
+			(typeof entry === "string" ? entry : entry?.source)?.startsWith("npm:pi-comfyui-paint"),
+		) ?? false;
+		assert.equal(paintPackage, false);
+	}
 	assert.ok(fs.existsSync(new URL("../extensions/teach-comfyui-paint.ts", import.meta.url)));
 	assert.equal(fs.existsSync(new URL("../extensions/comfyui-image.ts", import.meta.url)), false);
 });
