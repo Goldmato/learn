@@ -5,12 +5,17 @@ import path from "node:path";
 import test from "node:test";
 import {
 	findRelatedMasteryNotes,
+	mergeMasteryConceptsAcrossVault,
+	previewMasteryConceptMerge,
 	scanVaultMastery,
 	searchVaultMastery,
+	searchVaultMasteryCandidates,
 	syncMasteryAcrossVault,
 	updateRelatedFrontmatter,
 } from "../lib/mastery-vault.ts";
 import { updateMasteryFrontmatter, updateTeachingMastery } from "../lib/teach-learning-state.ts";
+import { registerMasteryConcept } from "../lib/mastery-concepts.ts";
+import { readMasteryEvidenceStore } from "../lib/mastery-evidence.ts";
 
 test("vault mastery scan finds exact shared concept IDs and skips tooling directories", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "mastery-vault-scan-"));
@@ -43,6 +48,7 @@ test("vault mastery scan finds exact shared concept IDs and skips tooling direct
 		assert.equal(found.related[0].mastery.get("shared-concept").score, 6);
 		assert.equal(searchVaultMastery(scan, "related lesson").concepts[0].conceptId, "shared-concept");
 		assert.equal(searchVaultMastery(scan, "different-concept", 1).total, 1);
+		assert.equal(searchVaultMasteryCandidates(scan, root, "related lesson", 10)[0].id, "shared-concept");
 		assert.throws(() => searchVaultMastery(scan, "", 0), /limit must be an integer/);
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
@@ -180,6 +186,131 @@ test("legacy HTML evidence blocks never block a new mastery sync", () => {
 		const result = syncMasteryAcrossVault(root, note, "shared", { evidence });
 		assert.equal(result.record.evidenceCount, 2);
 		assert.match(fs.readFileSync(note, "utf-8"), /"mastery__shared__evidence-count": 2/);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("mastery merge preview replays complete event histories and rewrites only approved concept references", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "mastery-vault-merge-"));
+	const sourceNote = path.join(root, "Old", "lesson.md");
+	const canonicalNote = path.join(root, "Current", "lesson.md");
+	fs.mkdirSync(path.join(root, ".obsidian"));
+	fs.mkdirSync(path.dirname(sourceNote), { recursive: true });
+	fs.mkdirSync(path.dirname(canonicalNote), { recursive: true });
+	try {
+		fs.writeFileSync(sourceNote, "---\ntitle: Old lesson\n---\nKeep source prose.", "utf-8");
+		fs.writeFileSync(canonicalNote, "---\ntitle: Current lesson\n---\nKeep target prose.", "utf-8");
+		registerMasteryConcept(root, {
+			id: "old-policy-reading",
+			name: "Policy reading",
+			subjectPath: ["Chinese", "Reading"],
+			definition: "Read policy statements in context.",
+			aliases: ["policy interpretation"],
+		});
+		registerMasteryConcept(root, {
+			id: "chinese-policy-comprehension",
+			name: "Chinese policy comprehension",
+			subjectPath: ["Chinese", "Reading comprehension"],
+			definition: "Understand policy statements in Chinese.",
+			aliases: ["policy comprehension"],
+		});
+		const sourceEvidence = {
+			conceptId: "old-policy-reading",
+			interactionId: "source-attempt",
+			evidenceType: "quiz",
+			outcome: "correct",
+			score: 10,
+			confidence: 5,
+			recordedAt: 10,
+		};
+		const sourceNext = updateTeachingMastery(undefined, sourceEvidence);
+		syncMasteryAcrossVault(root, sourceNote, sourceEvidence.conceptId, {
+			nextRecord: sourceNext,
+			evidence: sourceEvidence,
+		});
+		const targetEvidence = {
+			conceptId: "chinese-policy-comprehension",
+			interactionId: "canonical-attempt",
+			evidenceType: "quiz",
+			outcome: "incorrect",
+			score: 0,
+			confidence: 5,
+			recordedAt: 20,
+		};
+		const targetNext = updateTeachingMastery(undefined, targetEvidence);
+		syncMasteryAcrossVault(root, canonicalNote, targetEvidence.conceptId, {
+			nextRecord: targetNext,
+			evidence: targetEvidence,
+		});
+
+		const preview = previewMasteryConceptMerge(root, "old-policy-reading", "chinese-policy-comprehension");
+		assert.equal(preview.canMerge, true);
+		assert.equal(preview.sourceEvidenceCount, 1);
+		assert.equal(preview.canonicalEvidenceCount, 1);
+		assert.equal(preview.mergedEvidenceCount, 2);
+		assert.deepEqual(preview.affectedNotePaths.sort(), [path.join("Current", "lesson.md"), path.join("Old", "lesson.md")].sort());
+
+		fs.appendFileSync(canonicalNote, "\nChanged after preview.", "utf-8");
+		assert.throws(
+			() => mergeMasteryConceptsAcrossVault(root, "old-policy-reading", "chinese-policy-comprehension", preview.previewToken),
+			/changed after preview/,
+		);
+		assert.match(fs.readFileSync(sourceNote, "utf-8"), /mastery__old-policy-reading__evidence-count/);
+
+		const freshPreview = previewMasteryConceptMerge(root, "old-policy-reading", "chinese-policy-comprehension");
+		const merged = mergeMasteryConceptsAcrossVault(root, "old-policy-reading", "chinese-policy-comprehension", freshPreview.previewToken);
+		assert.equal(merged.preview.mergedEvidenceCount, 2);
+		assert.equal(merged.files.length, 2);
+		for (const file of [sourceNote, canonicalNote]) {
+			const markdown = fs.readFileSync(file, "utf-8");
+			assert.doesNotMatch(markdown, /mastery__old-policy-reading__/);
+			assert.match(markdown, /mastery__chinese-policy-comprehension__evidence-count": 2/);
+			assert.match(markdown, /Keep (?:source|target) prose\./);
+		}
+		const evidence = readMasteryEvidenceStore(root);
+		assert.equal(evidence.events.length, 2);
+		assert.ok(evidence.events.every((event) => event.conceptId === "chinese-policy-comprehension"));
+		const mergedAgain = previewMasteryConceptMerge(root, "old-policy-reading", "chinese-policy-comprehension");
+		assert.equal(mergedAgain.canMerge, false);
+		assert.match(mergedAgain.blockers.join(" "), /already merged/);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("mastery merge preview blocks legacy aggregates without replayable evidence", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "mastery-vault-merge-legacy-"));
+	const note = path.join(root, "Lesson.md");
+	fs.mkdirSync(path.join(root, ".obsidian"));
+	try {
+		registerMasteryConcept(root, {
+			id: "legacy-concept",
+			name: "Legacy concept",
+			subjectPath: ["Subject"],
+			definition: "An old mastery aggregate.",
+		});
+		registerMasteryConcept(root, {
+			id: "canonical-concept",
+			name: "Canonical concept",
+			subjectPath: ["Subject"],
+			definition: "The target concept.",
+		});
+		fs.writeFileSync(note, updateMasteryFrontmatter("---\ntitle: Legacy\n---\nBody.", "legacy-concept", {
+			score: 7,
+			evidenceCount: 4,
+			evidenceWeight: 3.9,
+			lastInteractionId: "old",
+			confidence: 5,
+		}));
+		const preview = previewMasteryConceptMerge(root, "legacy-concept", "canonical-concept");
+		assert.equal(preview.canMerge, false);
+		assert.match(preview.blockers.join(" "), /no replayable evidence events/);
+		assert.throws(
+			() => mergeMasteryConceptsAcrossVault(root, "legacy-concept", "canonical-concept", preview.previewToken),
+			/blocked/,
+		);
+		assert.match(fs.readFileSync(note, "utf-8"), /mastery__legacy-concept__score": 7/);
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
 	}

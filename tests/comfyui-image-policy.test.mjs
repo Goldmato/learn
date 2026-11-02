@@ -29,10 +29,10 @@ test("main agent has one prompt-and-placement paint tool backed by the isolated 
 	assert.ok(fs.existsSync(new URL("../agents/extensions/comfyui-image.ts", import.meta.url)));
 	assert.equal(fs.existsSync(new URL("../extensions/comfyui-image.ts", import.meta.url)), false);
 	assert.match(paintTool, /name: "teach_comfyui_paint"/);
-	assert.match(teachingSkill, /Call the single `teach_comfyui_paint` tool with a plain-language `prompt`, a short human-readable `captionTitle`, a concise `caption`, and `insertAfter`/);
+	assert.match(teachingSkill, /Call only `teach_comfyui_paint` with a plain-language `prompt`, specific human-readable `captionTitle`, concise 1–2 sentence `caption`, and `insertAfter`/);
 	assert.match(teachingSkill, /%%pi-comfyui-image:<id>%%/);
-	assert.match(teachingSkill, /presented in italics and quotation marks inside a titled quote callout/);
-	assert.match(teachingSkill, /!\[\[001-Attachments\/~comfyui\/image-name\.png\]\]/);
+	assert.match(teachingSkill, /caption explains what the image shows and means; it appears italicized in a titled quote callout/);
+	assert.match(teachingSkill, /marker becomes a titled quote caption above a standard Obsidian embed/);
 	assert.match(visualizeSkill, /ComfyUI is the default/);
 	assert.match(visualizeSkill, /single `teach_comfyui_paint` tool/);
 	assert.match(visualizeSkill, /Use a diagram instead/);
@@ -249,9 +249,9 @@ test("generation errors are preserved and retries require learner consent", () =
 	const agent = fs.readFileSync(new URL("../agents/comfyui-image-maker.md", import.meta.url), "utf-8");
 	const skill = fs.readFileSync(new URL("../skills/teach/SKILL.md", import.meta.url), "utf-8");
 	assert.match(agent, /Boxes can be omitted for ordinary images/i);
-	assert.match(skill, /launches the `comfyui-image-maker` through the global `@tintinweb\/pi-subagents` `Agent` tool in the background/);
-	assert.match(skill, /!\[\[001-Attachments\/~comfyui\/image-name\.png\]\]/);
-	assert.match(agent, /return the exact error without claiming success/);
-	assert.match(skill, /tell the learner the exact error and offer Retry or Pause\/Exit/);
-	assert.match(skill, /retry only after the learner chooses it/);
+	assert.match(skill, /launches `comfyui-image-maker` through global `@tintinweb\/pi-subagents` `Agent` in the background/);
+	assert.match(skill, /marker becomes a titled quote caption above a standard Obsidian embed/);
+	assert.match(agent, /the placeholder remains for the learner's recovery choice/);
+	assert.match(skill, /give the exact error and offer Retry or Pause\/Exit/);
+	assert.match(skill, /retry only after he chooses/);
 });

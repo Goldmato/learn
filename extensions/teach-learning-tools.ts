@@ -8,6 +8,7 @@ import {
 	readLinkedNotePath,
 	readMasteryFrontmatter,
 	readTeachingHistory,
+	resolveTeachingResponse,
 	updateTeachingMastery,
 	type MasteryRecord,
 	type TeachingOutcome,
@@ -17,9 +18,18 @@ import {
 	findVaultRootForNote,
 	scanVaultMastery,
 	searchVaultMastery,
+	searchVaultMasteryCandidates,
+	previewMasteryConceptMerge,
+	mergeMasteryConceptsAcrossVault,
 	syncMasteryAcrossVault,
 	type PersistedMasteryEvidence,
 } from "../lib/mastery-vault.ts";
+import {
+	readMasteryConceptCatalog,
+	registerMasteryConcept,
+	resolveMasteryConceptId,
+	searchMasteryConceptCatalog,
+} from "../lib/mastery-concepts.ts";
 import { withMdLogWriteLock } from "../lib/md-log-write-lock.ts";
 
 interface AttemptEntry {
@@ -27,7 +37,7 @@ interface AttemptEntry {
 	interactionId: string;
 	conceptId: string;
 	outcome: TeachingOutcome;
-	evidenceType: "free_response";
+	evidenceType: "quiz" | "free_response";
 	explanation: string;
 	misconception?: string;
 	evidenceScore: number;
@@ -103,7 +113,7 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 		promptSnippet: "Safely reconcile matching mastery records across vault notes",
 		promptGuidelines: [
 			"Use this to retry or explicitly reconcile related-note mastery after a reported conflict.",
-			"The tool only merges notes with the exact same conceptId. It unions unique evidence markers and recomputes the score; it never guesses from timestamps or overwrites conflicting records with incomplete evidence.",
+			"The tool syncs only the resolved canonical concept ID. It replays stored unique evidence events; it never merges different concepts or guesses from timestamps.",
 		],
 		parameters: Type.Object({
 			conceptId: Type.String({ minLength: 1 }),
@@ -112,15 +122,153 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 			const notePath = readLinkedNotePath(ctx.sessionManager.getEntries());
 			if (!notePath) throw new Error("Link a note with /md-log before syncing mastery.");
 			const resolvedNotePath = path.isAbsolute(notePath) ? notePath : path.resolve(ctx.cwd, notePath);
+			const vaultRoot = findVaultRootForNote(resolvedNotePath);
+			const conceptId = resolveMasteryConceptId(readMasteryConceptCatalog(vaultRoot), params.conceptId.trim());
 			const result = await withMdLogWriteLock(() =>
-				syncMasteryAcrossVault(findVaultRootForNote(resolvedNotePath), resolvedNotePath, params.conceptId.trim()),
+				syncMasteryAcrossVault(vaultRoot, resolvedNotePath, conceptId),
 			);
 			return {
 				content: [{
 					type: "text" as const,
-					text: `Synchronized "${params.conceptId}" across ${result.files.length} changed note(s) using ${result.evidenceCount} unique evidence sample(s).`,
+					text: `Synchronized "${conceptId}" across ${result.files.length} changed note(s) using ${result.evidenceCount} unique evidence sample(s).`,
 				}],
-				details: { conceptId: params.conceptId, files: result.files, evidenceCount: result.evidenceCount },
+				details: { conceptId, files: result.files, evidenceCount: result.evidenceCount },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "teach_preview_mastery_merge",
+		label: "Teaching: Preview Mastery Merge",
+		description: "Preview the notes, evidence replay, and blockers for merging one registered concept into another without changing the vault.",
+		promptSnippet: "Preview a proposed mastery concept merge",
+		promptGuidelines: [
+			"Call this before any merge. Explain the proposed canonical concept, affected notes, and evidence counts to the learner.",
+			"Never merge concepts because their names are merely similar. Confirm that their learning goals and scope are equivalent.",
+			"Ask the learner for explicit approval before calling teach_merge_mastery_concepts. Do not treat preview as approval.",
+			"Legacy aggregate baselines without individual evidence cannot be safely replayed; respect merge blockers and do not bypass them.",
+		],
+		parameters: Type.Object({
+			sourceId: Type.String({ minLength: 1 }),
+			canonicalId: Type.String({ minLength: 1 }),
+		}, { additionalProperties: false }),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const notePath = readLinkedNotePath(ctx.sessionManager.getEntries());
+			if (!notePath) throw new Error("Link a note with /md-log before previewing a mastery merge.");
+			const resolvedNotePath = path.isAbsolute(notePath) ? notePath : path.resolve(ctx.cwd, notePath);
+			const preview = previewMasteryConceptMerge(
+				findVaultRootForNote(resolvedNotePath),
+				params.sourceId.trim(),
+				params.canonicalId.trim(),
+			);
+			return {
+				content: [{
+					type: "text" as const,
+					text: JSON.stringify(preview, null, 2),
+				}],
+				details: preview,
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "teach_merge_mastery_concepts",
+		label: "Teaching: Merge Mastery Concepts",
+		description: "After explicit learner approval, merge fully replayable evidence into a canonical concept and rewrite affected note references.",
+		promptSnippet: "Apply an approved, replayable mastery concept merge",
+		promptGuidelines: [
+			"Only call after previewing the same IDs and receiving explicit learner approval.",
+			"Pass the exact previewToken from that preview. If the preview is stale or blocked, do not retry by weakening safeguards.",
+			"Report the canonical record and changed notes after success. Do not edit unrelated note content.",
+		],
+		parameters: Type.Object({
+			sourceId: Type.String({ minLength: 1 }),
+			canonicalId: Type.String({ minLength: 1 }),
+			previewToken: Type.String({ minLength: 1 }),
+		}, { additionalProperties: false }),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const notePath = readLinkedNotePath(ctx.sessionManager.getEntries());
+			if (!notePath) throw new Error("Link a note with /md-log before merging mastery concepts.");
+			const resolvedNotePath = path.isAbsolute(notePath) ? notePath : path.resolve(ctx.cwd, notePath);
+			const vaultRoot = findVaultRootForNote(resolvedNotePath);
+			const preview = previewMasteryConceptMerge(vaultRoot, params.sourceId.trim(), params.canonicalId.trim());
+			if (preview.previewToken !== params.previewToken) {
+				throw new Error("Mastery merge inputs changed after preview; no changes were made. Preview the merge again.");
+			}
+			if (!preview.canMerge) {
+				throw new Error(`Mastery merge is blocked: ${preview.blockers.join("; ")}`);
+			}
+			if (!ctx.hasUI) throw new Error("Mastery merge requires interactive UI confirmation; no changes were made.");
+			const mergeChoice = `Merge ${params.sourceId.trim()} into ${params.canonicalId.trim()}`;
+			const confirmation = await withSharedUiLock(() => ctx.ui.select(
+				`Confirm merge of ${preview.mergedEvidenceCount} evidence sample(s) across ${preview.affectedNotePaths.length} note(s)`,
+				[mergeChoice, "Cancel"],
+			));
+			if (confirmation !== mergeChoice) {
+				return {
+					content: [{ type: "text" as const, text: "Mastery merge cancelled; no changes were made." }],
+					details: { cancelled: true, sourceId: params.sourceId, canonicalId: params.canonicalId },
+				};
+			}
+			const result = await withMdLogWriteLock(() =>
+				mergeMasteryConceptsAcrossVault(
+					vaultRoot,
+					params.sourceId.trim(),
+					params.canonicalId.trim(),
+					params.previewToken,
+				),
+			);
+			return {
+				content: [{
+					type: "text" as const,
+					text: `Merged "${params.sourceId}" into "${params.canonicalId}" using ${result.preview.mergedEvidenceCount} replayed evidence sample(s); updated ${result.files.length} note(s).`,
+				}],
+				details: { ...result.preview, files: result.files },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "teach_register_mastery_concept",
+		label: "Teaching: Register Mastery Concept",
+		description: "Add a canonical learning concept to the vault catalogue without changing existing mastery IDs or records.",
+		promptSnippet: "Register a canonical concept for consistent mastery tracking",
+		promptGuidelines: [
+			"Search teach_find_mastery_concepts first. Register only a genuinely distinct concept or an existing uncatalogued ID that represents the same learning goal.",
+			"Use a stable lowercase kebab-case conceptId, a concise canonical name, a broad-to-specific subjectPath, and a definition that clearly bounds what is being assessed.",
+			"Add aliases only for alternate names that mean the same learning goal. Do not list related or prerequisite concepts as aliases.",
+			"Register a parent before its child. This tool never changes existing catalogue entries or merges mastery records.",
+		],
+		parameters: Type.Object({
+			conceptId: Type.String({ minLength: 1, maxLength: 100, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }),
+			name: Type.String({ minLength: 1, maxLength: 160 }),
+			subjectPath: Type.Array(Type.String({ minLength: 1, maxLength: 160 }), { minItems: 1, maxItems: 8 }),
+			definition: Type.String({ minLength: 1, maxLength: 2000 }),
+			aliases: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 160 }), { maxItems: 30 })),
+			parentId: Type.Optional(Type.String({ minLength: 1, maxLength: 100, pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" })),
+		}, { additionalProperties: false }),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const notePath = readLinkedNotePath(ctx.sessionManager.getEntries());
+			if (!notePath) throw new Error("Link a note with /md-log before registering a mastery concept.");
+			const resolvedNotePath = path.isAbsolute(notePath) ? notePath : path.resolve(ctx.cwd, notePath);
+			if (!fs.existsSync(resolvedNotePath) || !fs.statSync(resolvedNotePath).isFile()) {
+				throw new Error(`The linked md-log note is not readable: ${resolvedNotePath}`);
+			}
+			const root = findVaultRootForNote(resolvedNotePath);
+			const result = await withMdLogWriteLock(() => registerMasteryConcept(root, {
+				id: params.conceptId,
+				name: params.name,
+				subjectPath: params.subjectPath,
+				definition: params.definition,
+				aliases: params.aliases ?? [],
+				parentId: params.parentId,
+			}));
+			return {
+				content: [{
+					type: "text" as const,
+					text: `Registered "${result.concept.id}" in the vault catalogue at ${path.join(root, "mastery-concepts.json")}.`,
+				}],
+				details: { catalogPath: path.join(root, "mastery-concepts.json"), concept: result.concept },
 			};
 		},
 	});
@@ -128,15 +276,18 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "teach_find_mastery_concepts",
 		label: "Teaching: Find Mastery Concepts",
-		description: "Search the current Obsidian vault for existing mastery concept IDs and their note records. Use this before assigning a conceptId so matching concepts reuse their established ID.",
+		description: "Search the vault's canonical concept catalogue and existing mastery IDs with their note records.",
 		promptSnippet: "Search the vault's existing mastery concept IDs",
 		promptGuidelines: [
-			"Before choosing a conceptId for a graded quiz or free response, search this tool for the learning goal and reuse an exact existing ID when it matches.",
-			"Do not merge distinct concepts merely because their names are similar; concept IDs are exact, case-sensitive identifiers.",
-			"If the search returns no suitable concept, create a concise stable kebab-case ID.",
+			"Before choosing a conceptId for a graded quiz or free response, search for the learning goal and reuse an exact existing ID when it matches.",
+			"Use ranked names, definitions, aliases, subject paths, and note paths to find candidates; confirm that the actual learning goal and scope match before reusing an ID.",
+			"If a candidate has mergedInto, use that target canonical ID rather than the retired ID.",
+			"Similar wording is not permission to merge concepts; use the explicit preview/approval/merge workflow only for genuinely equivalent goals.",
+			"If the selected existing mastery ID is not yet catalogued, register that same ID with its canonical name, subjectPath, definition, and true synonyms.",
+			"If the search returns no suitable concept, register a concise stable lowercase kebab-case ID before using it for mastery.",
 		],
 		parameters: Type.Object({
-			query: Type.Optional(Type.String({ description: "Optional case-insensitive search over concept IDs, note titles, and vault-relative paths. Omit to list all indexed concepts." })),
+			query: Type.Optional(Type.String({ description: "Search canonical names, definitions, aliases, subject paths, IDs, note titles, and paths. Results are suggestions; confirm the learning goal before reusing or merging an ID." })),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, description: "Maximum concepts to return; defaults to 100." })),
 		}, { additionalProperties: false }),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -146,21 +297,45 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 			if (!fs.existsSync(resolvedNotePath) || !fs.statSync(resolvedNotePath).isFile()) {
 				throw new Error(`The linked md-log note is not readable: ${resolvedNotePath}`);
 			}
-			const scan = scanVaultMastery(findVaultRootForNote(resolvedNotePath));
+			const vaultRoot = findVaultRootForNote(resolvedNotePath);
+			const scan = scanVaultMastery(vaultRoot);
 			const limit = params.limit ?? 100;
 			const search = searchVaultMastery(scan, params.query, limit);
+			const catalog = readMasteryConceptCatalog(vaultRoot);
+			const catalogSearch = searchMasteryConceptCatalog(catalog, params.query, limit);
+			const candidates = searchVaultMasteryCandidates(scan, vaultRoot, params.query ?? "", Math.min(limit, 100));
 			return {
 				content: [{
 					type: "text" as const,
 					text: JSON.stringify({
-						total: search.total,
-						returned: search.concepts.length,
-						truncated: search.total > search.concepts.length,
-						concepts: search.concepts,
+						suggestions: {
+							returned: candidates.length,
+							limit: Math.min(limit, 100),
+							limitReached: candidates.length === Math.min(limit, 100),
+							candidates,
+							note: "Ranked candidates are not automatic matches. Confirm the learning goal and scope before reusing an ID or requesting a merge.",
+						},
+						mastery: {
+							total: search.total,
+							returned: search.concepts.length,
+							truncated: search.total > search.concepts.length,
+							concepts: search.concepts,
+						},
+						catalog: {
+							total: catalogSearch.total,
+							returned: catalogSearch.concepts.length,
+							truncated: catalogSearch.total > catalogSearch.concepts.length,
+							concepts: catalogSearch.concepts,
+						},
 						diagnostics: search.diagnostics,
 					}, null, 2),
 				}],
-				details: { total: search.total, returned: search.concepts.length, truncated: search.total > search.concepts.length },
+				details: {
+					masteryTotal: search.total,
+					catalogTotal: catalogSearch.total,
+					returned: search.concepts.length + catalogSearch.concepts.length,
+					suggestions: candidates.length,
+				},
 			};
 		},
 	});
@@ -236,13 +411,13 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "teach_record_attempt",
 		label: "Teaching: Record Attempt",
-		description: "Record your evaluation of a completed teach_free_response interaction and update its concept mastery.",
-		promptSnippet: "Record the learner's evaluated free-response attempt",
+		description: "Record your evaluation of a completed quiz or teach_free_response interaction and update its concept mastery.",
+		promptSnippet: "Record the learner's evaluated teaching attempt",
 		promptGuidelines: [
-			"Call this only after evaluating a completed teach_free_response answer.",
+			"Call this only after evaluating a completed quiz or teach_free_response interaction.",
 			"Use the exact interactionId returned by teach_free_response and evidenceType free_response.",
 			"Include a concise explanation of the correct answer and key reasoning. Include misconception when the answer was incorrect.",
-			"For quiz results, use the returned interactionId exactly. Binary quiz evidence must be 10 when correct and 0 when incorrect or 'I don't know'.",
+			"For quiz results, use the returned interactionId exactly and evidenceType quiz. Do not remove any suffix. If only the prefix is supplied, the tool accepts it only when it uniquely identifies one quiz. Binary quiz evidence must be 10 when correct and 0 when incorrect or 'I don't know'.",
 			"Set evidenceScore from 0 to 10. Binary questions use 0 or 10; nuanced responses are graded against the learning goal and relevant curriculum context.",
 			"Infer confidence from learner-authored scratchpad/note reasoning, especially evidence of doubt or second-guessing. Use 5 if confidence genuinely cannot be inferred; confidence only lightly adjusts evidence weight.",
 		],
@@ -260,9 +435,9 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 
 		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
 			const interactionId = params.interactionId.trim();
-			const conceptId = params.conceptId.trim();
+			const requestedConceptId = params.conceptId.trim();
 			const explanation = params.explanation.trim();
-			if (!interactionId || !conceptId || !explanation) {
+			if (!interactionId || !requestedConceptId || !explanation) {
 				throw new Error("interactionId, conceptId, and explanation must contain non-whitespace text.");
 			}
 			return serializeAttempts(async () => {
@@ -271,18 +446,25 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 				const notePath = linkedNotePath
 					? path.isAbsolute(linkedNotePath) ? linkedNotePath : path.resolve(ctx.cwd, linkedNotePath)
 					: null;
+				if (notePath && (!fs.existsSync(notePath) || !fs.statSync(notePath).isFile())) {
+					throw new Error(`The linked md-log note is not readable: ${notePath}`);
+				}
+				const vaultRoot = notePath ? findVaultRootForNote(notePath) : null;
+				const catalog = vaultRoot ? readMasteryConceptCatalog(vaultRoot) : null;
+				const conceptId = catalog ? resolveMasteryConceptId(catalog, requestedConceptId) : requestedConceptId;
 				let persistedMastery = new Map<string, MasteryRecord>();
 				if (notePath) {
-					if (!fs.existsSync(notePath) || !fs.statSync(notePath).isFile()) {
-						throw new Error(`The linked md-log note is not readable: ${notePath}`);
-					}
 					persistedMastery = readMasteryFrontmatter(fs.readFileSync(notePath, "utf-8"));
 				}
 				const history = readTeachingHistory(entries, persistedMastery);
-				const response = history.responses.get(interactionId);
-				if (!response) throw new Error(`No completed teach_free_response interaction found for "${interactionId}".`);
-				if (history.recordedInteractionIds.has(interactionId)) throw new Error(`An attempt is already recorded for interaction "${interactionId}".`);
-				if (response.conceptId && response.conceptId !== conceptId) {
+				const response = resolveTeachingResponse(history.responses, interactionId);
+				if (!response) throw new Error(`No completed teaching interaction found for "${interactionId}".`);
+				const resolvedInteractionId = response.interactionId;
+				if (history.recordedInteractionIds.has(resolvedInteractionId)) throw new Error(`An attempt is already recorded for interaction "${resolvedInteractionId}".`);
+				const responseConceptId = response.conceptId && catalog
+					? resolveMasteryConceptId(catalog, response.conceptId)
+					: response.conceptId;
+				if (responseConceptId && responseConceptId !== conceptId) {
 					throw new Error(`Interaction "${interactionId}" belongs to concept "${response.conceptId}", not "${conceptId}".`);
 				}
 				if (response.source !== params.evidenceType) {
@@ -297,26 +479,35 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 					}
 				}
 
-				const sessionPreviousRecord = history.mastery.get(conceptId);
+				const sessionPreviousRecord = history.mastery.get(conceptId) ??
+					(catalog
+						? [...history.mastery]
+							.filter(([id]) => resolveMasteryConceptId(catalog, id) === conceptId)
+							.map(([, record]) => record)
+							.sort((left, right) => right.evidenceCount - left.evidenceCount)[0]
+						: undefined);
 				let previousMastery = sessionPreviousRecord?.score;
 				let masteryState = updateTeachingMastery(sessionPreviousRecord, {
-					interactionId,
+					interactionId: resolvedInteractionId,
 					score: params.evidenceScore,
 					confidence: params.confidence,
 					reasoningSummary: params.reasoningSummary,
 				});
 				const recordedAt = Date.now();
 				if (notePath) {
+					if (!vaultRoot) throw new Error("Could not resolve the linked note's Obsidian vault root.");
 					const evidence: PersistedMasteryEvidence = {
 						conceptId,
-						interactionId,
+						interactionId: resolvedInteractionId,
+						evidenceType: params.evidenceType,
+						outcome: params.outcome,
 						score: params.evidenceScore,
 						confidence: params.confidence,
 						reasoningSummary: params.reasoningSummary?.trim() || undefined,
 						recordedAt,
 					};
 					const synced = await withMdLogWriteLock(() =>
-						syncMasteryAcrossVault(findVaultRootForNote(notePath), notePath, conceptId, {
+						syncMasteryAcrossVault(vaultRoot, notePath, conceptId, {
 							previousRecord: sessionPreviousRecord,
 							nextRecord: masteryState,
 							evidence,
@@ -327,7 +518,7 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 				}
 				const details: AttemptEntry = {
 					callId: toolCallId,
-					interactionId,
+					interactionId: resolvedInteractionId,
 					conceptId,
 					outcome: params.outcome,
 					evidenceType: params.evidenceType,

@@ -4,7 +4,9 @@ import {
 	masteryEvidenceWeight,
 	readMasteryFrontmatter,
 	migrateMasteryFrontmatter,
+	removeMasteryFrontmatter,
 	readTeachingHistory,
+	resolveTeachingResponse,
 	updateMasteryFrontmatter,
 	updateTeachingMastery,
 } from "../lib/teach-learning-state.ts";
@@ -172,6 +174,32 @@ test("quiz results become mastery responses with their scratchpad and concept", 
 	assert.equal(quiz.scratchpad, "I was unsure whether B fit.");
 });
 
+test("quiz interaction IDs resolve a unique Pi call prefix and reject ambiguous prefixes", () => {
+	const interactionId = "call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_07943d684e8d4e80016ae83621328887d1a7c8e7cdcad48dff";
+	const first = {
+		callId: interactionId,
+		interactionId,
+		source: "quiz",
+		question: "What does the phrase mean?",
+		response: "Option A",
+	};
+	const responses = new Map([[interactionId, first]]);
+
+	assert.equal(resolveTeachingResponse(responses, interactionId), first);
+	assert.equal(resolveTeachingResponse(responses, "call_mAlMvW6WvkPpYwOEi2PiUrZR"), first);
+	assert.equal(resolveTeachingResponse(responses, "unrelated"), undefined);
+
+	responses.set("call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_another", {
+		...first,
+		callId: "call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_another",
+		interactionId: "call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_another",
+	});
+	assert.throws(
+		() => resolveTeachingResponse(responses, "call_mAlMvW6WvkPpYwOEi2PiUrZR"),
+		/matches multiple quiz responses/,
+	);
+});
+
 test("mastery frontmatter updates only its field and round-trips quoted keys and reasoning", () => {
 	const original = [
 		"---",
@@ -216,6 +244,29 @@ test("mastery frontmatter updates only its field and round-trips quoted keys and
 		score: 7.25,
 		evidenceCount: 4,
 		evidenceWeight: 3.9,
+	});
+
+	test("removing one mastery ID preserves other frontmatter and note content", () => {
+		const original = [
+			"---",
+			"title: Keep this title",
+			'"mastery__old-concept__score": 7',
+			'"mastery__old-concept__evidence-count": 3',
+			'"mastery__current-concept__score": 8',
+			'"mastery__current-concept__evidence-count": 4',
+			"tags:",
+			"  - preserve",
+			"---",
+			"",
+			"Authored note body stays unchanged.",
+		].join("\n");
+		const updated = removeMasteryFrontmatter(original, "old-concept");
+		assert.doesNotMatch(updated, /mastery__old-concept__/);
+		assert.match(updated, /mastery__current-concept__score": 8/);
+		assert.match(updated, /^title: Keep this title$/m);
+		assert.match(updated, /^  - preserve$/m);
+		assert.ok(updated.endsWith("Authored note body stays unchanged."));
+		assert.equal(removeMasteryFrontmatter(updated, "missing-concept"), updated);
 	});
 	assert.match(revisedMastery, /^title: Existing metadata\n"mastery__core%3A%20idea__score": 7\.25\n"mastery__core%3A%20idea__evidence-count": 4\n"mastery__core%3A%20idea__evidence-weight": 3\.9\n"mastery__core%3A%20idea__last-interaction-id": "attempt-1"\n"mastery__core%3A%20idea__confidence": 4\n"mastery__core%3A%20idea__reasoning-summary": "I thought \\"maybe\\" because the evidence was unclear\."\nother_field: preserve exactly$/m);
 	assert.ok(revisedMastery.endsWith("\n\nBody stays exactly the same."));

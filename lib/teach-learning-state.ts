@@ -38,6 +38,22 @@ export interface TeachingHistory {
 	mastery: Map<string, MasteryRecord>;
 }
 
+export function resolveTeachingResponse(
+	responses: ReadonlyMap<string, TeachingResponse>,
+	interactionId: string,
+): TeachingResponse | undefined {
+	const exact = responses.get(interactionId);
+	if (exact) return exact;
+
+	const quizMatches = [...responses.values()].filter((response) =>
+		response.source === "quiz" && response.interactionId.startsWith(`${interactionId}|`),
+	);
+	if (quizMatches.length > 1) {
+		throw new Error(`Interaction prefix "${interactionId}" matches multiple quiz responses; use the full interactionId.`);
+	}
+	return quizMatches[0];
+}
+
 const INITIAL_QUESTION_COUNT = 3;
 const INITIAL_BASELINE_WEIGHT = 3;
 
@@ -359,6 +375,37 @@ export function updateMasteryFrontmatter(markdown: string, conceptId: string, re
 	keptLines.splice(outputIndex, 0, ...rendered.split("\n"));
 	const updatedFrontmatter = keptLines.join(newline);
 	return `${markdown.slice(0, bounds.start)}${updatedFrontmatter}${markdown.slice(bounds.end)}`;
+}
+
+export function removeMasteryFrontmatter(markdown: string, conceptId: string): string {
+	const migrated = migrateMasteryFrontmatter(markdown);
+	const bounds = frontmatterBounds(migrated);
+	if (!bounds) return migrated;
+	const frontmatter = migrated.slice(bounds.start, bounds.end);
+	const lines = frontmatter.split(/\r?\n/);
+	const ownedIndexes = new Set<number>();
+	for (const [index, line] of lines.entries()) {
+		const match = /^("(?:[^"\\]|\\.)*"|[A-Za-z0-9_%.-]+):[ \t]*/.exec(line);
+		if (!match) continue;
+		const propertyName = parseScalar(match[1]);
+		if (typeof propertyName !== "string" || !propertyName.startsWith("mastery__")) continue;
+		for (const field of MASTERY_FIELDS) {
+			const suffix = `__${field}`;
+			if (!propertyName.endsWith(suffix)) continue;
+			try {
+				if (decodeURIComponent(propertyName.slice("mastery__".length, -suffix.length)) === conceptId) {
+					ownedIndexes.add(index);
+				}
+			} catch {
+				throw new Error(`Linked note has an invalid encoded mastery property "${propertyName}".`);
+			}
+			break;
+		}
+	}
+	if (ownedIndexes.size === 0) return migrated;
+	const newline = frontmatter.includes("\r\n") ? "\r\n" : "\n";
+	const updatedFrontmatter = lines.filter((_line, index) => !ownedIndexes.has(index)).join(newline);
+	return `${migrated.slice(0, bounds.start)}${updatedFrontmatter}${migrated.slice(bounds.end)}`;
 }
 
 export function migrateMasteryFrontmatter(markdown: string): string {
