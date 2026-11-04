@@ -17,7 +17,23 @@ export interface MasteryEvidenceSample {
 	outcome: TeachingOutcome;
 	score: number;
 	confidence: number;
+	evidenceWeight?: number;
 	reasoningSummary?: string;
+	recordedAt: number;
+}
+
+export interface MasteryEvidenceRoundAssessment {
+	kind: "round_assessment";
+	conceptId: string;
+	interactionId: string;
+	roundId: string;
+	interactionIds: string[];
+	outcome: TeachingOutcome;
+	score: number;
+	confidence: number;
+	evidenceWeight: number;
+	coverage: string[];
+	rationale: string;
 	recordedAt: number;
 }
 
@@ -28,7 +44,7 @@ export interface MasteryEvidenceBaseline {
 	recordedAt: number;
 }
 
-export type MasteryEvidenceEvent = MasteryEvidenceSample | MasteryEvidenceBaseline;
+export type MasteryEvidenceEvent = MasteryEvidenceSample | MasteryEvidenceRoundAssessment | MasteryEvidenceBaseline;
 
 export interface MasteryEvidenceStore {
 	version: 1;
@@ -85,9 +101,60 @@ function validateEvent(value: unknown): MasteryEvidenceEvent {
 			recordedAt: value.recordedAt,
 		};
 	}
+	if (value.kind === "round_assessment") {
+		const unsupported = Object.keys(value).find((key) =>
+			![
+				"kind", "conceptId", "interactionId", "roundId", "interactionIds", "outcome",
+				"score", "confidence", "evidenceWeight", "coverage", "rationale", "recordedAt",
+			].includes(key),
+		);
+		if (unsupported) throw new Error(`Mastery round assessment contains unsupported field "${unsupported}".`);
+		if (typeof value.interactionId !== "string" || !value.interactionId.trim()) throw new Error("Mastery round assessment interactionId must contain text.");
+		if (typeof value.roundId !== "string" || !value.roundId.trim()) throw new Error("Mastery round assessment roundId must contain text.");
+		if (value.interactionId !== value.roundId) throw new Error("Mastery round assessment interactionId must equal its full roundId.");
+		if (!Array.isArray(value.interactionIds) || value.interactionIds.length === 0 ||
+			value.interactionIds.some((id) => typeof id !== "string" || !id.trim()) ||
+			new Set(value.interactionIds).size !== value.interactionIds.length) {
+			throw new Error("Mastery round assessment interactionIds must be a non-empty list of unique IDs.");
+		}
+		if (value.outcome !== "correct" && value.outcome !== "partial" && value.outcome !== "incorrect") {
+			throw new Error("Mastery round assessment has an invalid outcome.");
+		}
+		if (typeof value.score !== "number" || !Number.isFinite(value.score) || value.score < 0 || value.score > 10) {
+			throw new Error("Mastery round assessment score must be a finite number from 0 to 10.");
+		}
+		if (typeof value.confidence !== "number" || !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 10) {
+			throw new Error("Mastery round assessment confidence must be a finite number from 0 to 10.");
+		}
+		if (typeof value.evidenceWeight !== "number" || !Number.isFinite(value.evidenceWeight) ||
+			value.evidenceWeight < 1 || value.evidenceWeight > 3) {
+			throw new Error("Mastery round assessment evidenceWeight must be from 1 to 3.");
+		}
+		if (!Array.isArray(value.coverage) || value.coverage.length === 0 ||
+			value.coverage.some((item) => typeof item !== "string" || !item.trim())) {
+			throw new Error("Mastery round assessment coverage must be a non-empty list of non-empty strings.");
+		}
+		if (typeof value.rationale !== "string" || !value.rationale.trim()) {
+			throw new Error("Mastery round assessment rationale must contain text.");
+		}
+		return {
+			kind: "round_assessment",
+			conceptId: value.conceptId,
+			interactionId: value.interactionId,
+			roundId: value.roundId,
+			interactionIds: [...value.interactionIds],
+			outcome: value.outcome,
+			score: value.score,
+			confidence: value.confidence,
+			evidenceWeight: value.evidenceWeight,
+			coverage: value.coverage.map((item) => item.trim()),
+			rationale: value.rationale.trim(),
+			recordedAt: value.recordedAt,
+		};
+	}
 	if (value.kind !== "sample") throw new Error(`Unsupported mastery evidence event kind "${String(value.kind)}".`);
 	const unsupported = Object.keys(value).find((key) =>
-		!["kind", "conceptId", "interactionId", "evidenceType", "outcome", "score", "confidence", "reasoningSummary", "recordedAt"].includes(key),
+		!["kind", "conceptId", "interactionId", "evidenceType", "outcome", "score", "confidence", "evidenceWeight", "reasoningSummary", "recordedAt"].includes(key),
 	);
 	if (unsupported) throw new Error(`Mastery evidence sample contains unsupported field "${unsupported}".`);
 	if (typeof value.interactionId !== "string" || !value.interactionId.trim()) throw new Error("Mastery evidence interactionId must contain text.");
@@ -101,6 +168,12 @@ function validateEvent(value: unknown): MasteryEvidenceEvent {
 	if (typeof value.confidence !== "number" || !Number.isFinite(value.confidence) || value.confidence < 0 || value.confidence > 10) {
 		throw new Error("Mastery evidence confidence must be a finite number from 0 to 10.");
 	}
+	if (value.evidenceWeight !== undefined && (
+		typeof value.evidenceWeight !== "number" || !Number.isFinite(value.evidenceWeight) ||
+		value.evidenceWeight < 0.1 || value.evidenceWeight > 1
+	)) {
+		throw new Error("Mastery interaction evidenceWeight must be from 0.1 to 1.");
+	}
 	if (value.reasoningSummary !== undefined && typeof value.reasoningSummary !== "string") {
 		throw new Error("Mastery evidence reasoningSummary must be a string.");
 	}
@@ -112,6 +185,7 @@ function validateEvent(value: unknown): MasteryEvidenceEvent {
 		outcome: value.outcome,
 		score: value.score,
 		confidence: value.confidence,
+		evidenceWeight: typeof value.evidenceWeight === "number" ? value.evidenceWeight : undefined,
 		reasoningSummary: typeof value.reasoningSummary === "string" ? value.reasoningSummary : undefined,
 		recordedAt: value.recordedAt,
 	};
@@ -125,15 +199,31 @@ function validateStore(value: unknown): MasteryEvidenceStore {
 	if (unsupported) throw new Error(`Mastery evidence store contains unsupported field "${unsupported}".`);
 	const events = value.events.map(validateEvent);
 	const seenBaselines = new Set<string>();
-	const seenSamples = new Set<string>();
+	const seenInteractions = new Set<string>();
+	const seenRounds = new Set<string>();
+	const seenSamples = new Map<string, Set<string>>();
 	for (const event of events) {
 		if (event.kind === "baseline") {
 			if (seenBaselines.has(event.conceptId)) throw new Error(`Mastery evidence has duplicate baseline records for "${event.conceptId}".`);
 			seenBaselines.add(event.conceptId);
 		} else {
 			const key = `${event.conceptId}\u0000${event.interactionId}`;
-			if (seenSamples.has(key)) throw new Error(`Mastery evidence repeats interaction "${event.interactionId}" for "${event.conceptId}".`);
-			seenSamples.add(key);
+			if (seenInteractions.has(key)) throw new Error(`Mastery evidence repeats interaction "${event.interactionId}" for "${event.conceptId}".`);
+			seenInteractions.add(key);
+			if (event.kind === "round_assessment") {
+				const sourceSamples = seenSamples.get(event.conceptId) ?? new Set<string>();
+				const missingSource = event.interactionIds.find((interactionId) => !sourceSamples.has(interactionId));
+				if (missingSource) {
+					throw new Error(`Mastery round "${event.roundId}" references interaction "${missingSource}" without a prior sample event.`);
+				}
+				const roundKey = `${event.conceptId}\u0000${event.roundId}`;
+				if (seenRounds.has(roundKey)) throw new Error(`Mastery evidence repeats round "${event.roundId}" for "${event.conceptId}".`);
+				seenRounds.add(roundKey);
+			} else {
+				const sourceSamples = seenSamples.get(event.conceptId) ?? new Set<string>();
+				sourceSamples.add(event.interactionId);
+				seenSamples.set(event.conceptId, sourceSamples);
+			}
 		}
 	}
 	return { version: 1, events };
@@ -173,13 +263,16 @@ export function replayMasteryEvidence(events: MasteryEvidenceEvent[], conceptId:
 	const baselines = matching.filter((event): event is MasteryEvidenceBaseline => event.kind === "baseline");
 	if (baselines.length > 1) throw new Error(`Mastery evidence has multiple baselines for "${conceptId}".`);
 	let record = baselines[0]?.record;
-	const samples = matching.filter((event): event is MasteryEvidenceSample => event.kind === "sample");
-	for (const event of samples) {
+	const evidence = matching.filter((event): event is MasteryEvidenceSample | MasteryEvidenceRoundAssessment =>
+		event.kind !== "baseline",
+	);
+	for (const event of evidence) {
 		record = updateTeachingMastery(record, {
 			interactionId: event.interactionId,
 			score: event.score,
 			confidence: event.confidence,
-			reasoningSummary: event.reasoningSummary,
+			evidenceWeight: event.evidenceWeight,
+			reasoningSummary: event.kind === "sample" ? event.reasoningSummary : event.rationale,
 		});
 	}
 	return record;
@@ -196,6 +289,29 @@ export function appendMasteryEvidenceSample(
 	return validateStore({ version: 1, events: [...store.events, { kind: "sample", ...sample }] });
 }
 
+export function appendMasteryEvidenceRoundAssessment(
+	store: MasteryEvidenceStore,
+	assessment: Omit<MasteryEvidenceRoundAssessment, "kind">,
+): MasteryEvidenceStore {
+	const duplicateRound = store.events.find((event) =>
+		event.kind === "round_assessment" && event.conceptId === assessment.conceptId &&
+		event.roundId === assessment.roundId,
+	);
+	if (duplicateRound) {
+		throw new Error(`Round "${assessment.roundId}" is already stored as mastery evidence for "${assessment.conceptId}".`);
+	}
+	const alreadyReviewed = new Set(store.events.flatMap((event) =>
+		event.kind === "round_assessment" && event.conceptId === assessment.conceptId
+			? event.interactionIds
+			: [],
+	));
+	const repeatedInteraction = assessment.interactionIds.find((interactionId) => alreadyReviewed.has(interactionId));
+	if (repeatedInteraction) {
+		throw new Error(`Interaction "${repeatedInteraction}" already contributes to a mastery round assessment for "${assessment.conceptId}".`);
+	}
+	return validateStore({ version: 1, events: [...store.events, { kind: "round_assessment", ...assessment }] });
+}
+
 export function mergeMasteryEvidenceEvents(
 	store: MasteryEvidenceStore,
 	sourceId: string,
@@ -205,18 +321,13 @@ export function mergeMasteryEvidenceEvents(
 	if (relevant.some((event) => event.kind === "baseline")) {
 		throw new Error("Cannot merge concepts with legacy aggregate baselines: their original answer-level evidence is unavailable.");
 	}
-	const byInteraction = new Map<string, MasteryEvidenceSample>();
+	const byInteraction = new Map<string, MasteryEvidenceSample | MasteryEvidenceRoundAssessment>();
 	for (const event of relevant) {
-		if (event.kind !== "sample") continue;
+		if (event.kind === "baseline") continue;
 		const existing = byInteraction.get(event.interactionId);
 		if (existing) {
-			const sameEvidence =
-				existing.score === event.score &&
-				existing.confidence === event.confidence &&
-				existing.outcome === event.outcome &&
-				existing.evidenceType === event.evidenceType &&
-				existing.reasoningSummary === event.reasoningSummary &&
-				existing.recordedAt === event.recordedAt;
+			const sameEvidence = JSON.stringify({ ...existing, conceptId: canonicalId }) ===
+				JSON.stringify({ ...event, conceptId: canonicalId });
 			if (!sameEvidence) throw new Error(`Interaction "${event.interactionId}" has conflicting evidence across the concepts; no merge was applied.`);
 			continue;
 		}

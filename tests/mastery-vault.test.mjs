@@ -13,9 +13,17 @@ import {
 	syncMasteryAcrossVault,
 	updateRelatedFrontmatter,
 } from "../lib/mastery-vault.ts";
-import { updateMasteryFrontmatter, updateTeachingMastery } from "../lib/teach-learning-state.ts";
+import {
+	readMasteryFrontmatter,
+	updateMasteryFrontmatter,
+	updateTeachingMastery,
+} from "../lib/teach-learning-state.ts";
 import { registerMasteryConcept } from "../lib/mastery-concepts.ts";
-import { readMasteryEvidenceStore } from "../lib/mastery-evidence.ts";
+import {
+	appendMasteryEvidenceSample,
+	readMasteryEvidenceStore,
+	writeMasteryEvidenceStore,
+} from "../lib/mastery-evidence.ts";
 
 test("vault mastery scan finds exact shared concept IDs and skips tooling directories", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "mastery-vault-scan-"));
@@ -99,7 +107,15 @@ test("mastery sync propagates the latest frontmatter record to related notes wit
 		fs.writeFileSync(noteA, updateMasteryFrontmatter("---\ntitle: A\n---\nBody A.", "shared", shared));
 		fs.writeFileSync(noteB, updateMasteryFrontmatter("---\ntitle: B\n---\nBody B.", "shared", shared));
 
-		const evidence = { conceptId: "shared", interactionId: "attempt-b", score: 9, confidence: 8, recordedAt: 200 };
+		const evidence = {
+			conceptId: "shared",
+			interactionId: "attempt-b",
+			evidenceType: "quiz",
+			outcome: "partial",
+			score: 9,
+			confidence: 8,
+			recordedAt: 200,
+		};
 		const result = syncMasteryAcrossVault(root, noteA, "shared", { evidence });
 		assert.deepEqual(result.record, updateTeachingMastery(shared, evidence));
 		assert.equal(result.evidenceCount, 3);
@@ -110,6 +126,97 @@ test("mastery sync propagates the latest frontmatter record to related notes wit
 			assert.match(updated, /related:\n  - "\[\[(?:A|B)\]\]"/);
 			assert.doesNotMatch(updated, /pi-mastery-evidence/);
 		}
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("mastery evidence replay repairs stale note projections before adding new evidence", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "mastery-vault-replay-"));
+	const noteA = path.join(root, "A.md");
+	const noteB = path.join(root, "B.md");
+	fs.mkdirSync(path.join(root, ".obsidian"));
+	try {
+		const first = {
+			kind: "sample",
+			conceptId: "shared",
+			interactionId: "attempt-1",
+			evidenceType: "quiz",
+			outcome: "partial",
+			score: 8,
+			confidence: 5,
+			recordedAt: 10,
+		};
+		const journalRecord = updateTeachingMastery(undefined, first);
+		writeMasteryEvidenceStore(root, { version: 1, events: [first] });
+		fs.writeFileSync(noteA, updateMasteryFrontmatter("---\ntitle: A\n---\nBody A.", "shared", {
+			score: 9, evidenceCount: 1, evidenceWeight: 1, lastInteractionId: "stale-a", confidence: 5,
+		}));
+		fs.writeFileSync(noteB, updateMasteryFrontmatter("---\ntitle: B\n---\nBody B.", "shared", {
+			score: 2, evidenceCount: 4, evidenceWeight: 3.9, lastInteractionId: "stale-b", confidence: 5,
+		}));
+
+		const nextEvidence = {
+			conceptId: "shared",
+			interactionId: "attempt-2",
+			evidenceType: "free_response",
+			outcome: "correct",
+			score: 10,
+			confidence: 5,
+			recordedAt: 20,
+		};
+		const result = syncMasteryAcrossVault(root, noteA, "shared", { evidence: nextEvidence });
+
+		assert.deepEqual(result.previousRecord, journalRecord);
+		assert.deepEqual(result.record, updateTeachingMastery(journalRecord, nextEvidence));
+		for (const file of [noteA, noteB]) {
+			assert.equal(readMasteryFrontmatter(fs.readFileSync(file, "utf-8")).get("shared").score, 9);
+		}
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("round assessments require persisted source interactions and project their weighted score", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "mastery-vault-round-"));
+	const note = path.join(root, "Lesson.md");
+	fs.mkdirSync(path.join(root, ".obsidian"));
+	try {
+		const sample = {
+			kind: "sample",
+			conceptId: "shared",
+			interactionId: "answer-1",
+			evidenceType: "quiz",
+			outcome: "correct",
+			score: 10,
+			confidence: 5,
+			recordedAt: 10,
+		};
+		writeMasteryEvidenceStore(root, { version: 1, events: [sample] });
+		fs.writeFileSync(note, "---\ntitle: Lesson\n---\nBody.");
+		const assessment = {
+			conceptId: "shared",
+			interactionId: "round-full-call-id",
+			roundId: "round-full-call-id",
+			interactionIds: ["answer-1"],
+			outcome: "partial",
+			score: 4,
+			confidence: 6,
+			evidenceWeight: 2,
+			coverage: ["recall", "application"],
+			rationale: "Recall was strong, but transfer was inconsistent.",
+			recordedAt: 20,
+		};
+
+		const result = syncMasteryAcrossVault(root, note, "shared", { roundAssessment: assessment });
+		assert.equal(result.record.evidenceCount, 2);
+		assert.equal(result.record.score, 5.86);
+		const stored = readMasteryEvidenceStore(root);
+		assert.equal(stored.events.length, 2);
+		assert.equal(stored.events[1].kind, "round_assessment");
+		assert.throws(() => syncMasteryAcrossVault(root, note, "shared", {
+			roundAssessment: { ...assessment, interactionId: "round-2", roundId: "round-2", recordedAt: 30 },
+		}), /already contributes/);
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
 	}
@@ -153,7 +260,15 @@ test("mastery sync inherits an existing vault concept when the active note is ne
 			confidence: 5,
 		};
 		fs.writeFileSync(existing, updateMasteryFrontmatter("---\ntitle: Existing\n---\nExisting lesson.", "shared", previousRecord));
-		const evidence = { conceptId: "shared", interactionId: "attempt-4", score: 9, confidence: 8, recordedAt: 400 };
+		const evidence = {
+			conceptId: "shared",
+			interactionId: "attempt-4",
+			evidenceType: "quiz",
+			outcome: "partial",
+			score: 9,
+			confidence: 8,
+			recordedAt: 400,
+		};
 
 		const result = syncMasteryAcrossVault(root, current, "shared", { evidence });
 		assert.deepEqual(result.previousRecord, previousRecord);
@@ -182,7 +297,15 @@ test("legacy HTML evidence blocks never block a new mastery sync", () => {
 			score: 9, evidenceCount: 1, evidenceWeight: 1, lastInteractionId: "old-1", confidence: 8,
 		});
 		fs.writeFileSync(note, existing);
-		const evidence = { conceptId: "shared", interactionId: "new-2", score: 4, confidence: 5, recordedAt: 2 };
+		const evidence = {
+			conceptId: "shared",
+			interactionId: "new-2",
+			evidenceType: "free_response",
+			outcome: "partial",
+			score: 4,
+			confidence: 5,
+			recordedAt: 2,
+		};
 		const result = syncMasteryAcrossVault(root, note, "shared", { evidence });
 		assert.equal(result.record.evidenceCount, 2);
 		assert.match(fs.readFileSync(note, "utf-8"), /"mastery__shared__evidence-count": 2/);
@@ -224,9 +347,7 @@ test("mastery merge preview replays complete event histories and rewrites only a
 			confidence: 5,
 			recordedAt: 10,
 		};
-		const sourceNext = updateTeachingMastery(undefined, sourceEvidence);
 		syncMasteryAcrossVault(root, sourceNote, sourceEvidence.conceptId, {
-			nextRecord: sourceNext,
 			evidence: sourceEvidence,
 		});
 		const targetEvidence = {
@@ -238,9 +359,7 @@ test("mastery merge preview replays complete event histories and rewrites only a
 			confidence: 5,
 			recordedAt: 20,
 		};
-		const targetNext = updateTeachingMastery(undefined, targetEvidence);
 		syncMasteryAcrossVault(root, canonicalNote, targetEvidence.conceptId, {
-			nextRecord: targetNext,
 			evidence: targetEvidence,
 		});
 

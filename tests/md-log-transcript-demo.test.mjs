@@ -56,7 +56,7 @@ test("updated configured demo matches a fresh md-log backfill", { skip: !default
 	assert.notEqual(start, -1);
 	assert.notEqual(end, -1);
 	assert.equal(
-		note.slice(start + TRANSCRIPT_START.length + 1, end),
+		note.slice(start + TRANSCRIPT_START.length + 1, end).replace(/\n$/, ""),
 		renderTranscript(backfill.blocks),
 	);
 });

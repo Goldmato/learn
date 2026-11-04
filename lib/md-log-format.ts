@@ -12,6 +12,7 @@ export const TEACH_IMAGE_PLACEMENT_ENTRY = "teach-image-placement";
 export const TEACH_BREEZE_TTS_PLACEMENT_ENTRY = "teach-breeze-tts-placement";
 export const TEACH_VISUAL_PLACEMENT_ENTRY = "teach-visual-placement";
 export const TEACH_ATTACH_VISUAL_TOOL = "teach_attach_generated_visual";
+export const TEACH_LEARNING_INTERVIEW_TOOL = "teach_learning_interview";
 
 /** The two picture makers that publish into the vault and embed like an image. */
 export type VisualKind = "mermaid" | "svg";
@@ -105,6 +106,16 @@ export type TranscriptBlock =
 		response: string;
 		summaryTitle?: string;
 		conceptId?: string;
+		responseTimeMs?: number;
+	}
+	| {
+		kind: "learning_interview";
+		callId: string;
+		interviewId: string;
+		purpose: "session-intake" | "post-assessment";
+		summaryTitle: string;
+		questions: Array<{ question: string; answer: string }>;
+		responseTimeMs?: number;
 	}
 	| {
 		kind: "attempt";
@@ -114,6 +125,12 @@ export type TranscriptBlock =
 		outcome: "correct" | "partial" | "incorrect";
 		explanation: string;
 		misconception?: string;
+		evidenceType?: string;
+		evidenceWeight?: number;
+		roundId?: string;
+		sourceInteractionIds?: string[];
+		coverage?: string[];
+		includeInMdLog?: boolean;
 		previousMastery?: number;
 		newMastery?: number;
 		masteryState?: {
@@ -231,6 +248,12 @@ function callout(type: string, title: string, bodyLines: string[]): string {
 	].join("\n");
 }
 
+function collapsedDetails(summary: string, content: string): string {
+	if (!content.trim()) return "";
+	const quotedContent = content.split(/\r?\n/).map((line) => line ? `> ${line}` : ">").join("\n");
+	return `> [!note]- ${summary}\n>\n${quotedContent}`;
+}
+
 function questionCallout(
 	label: string,
 	question: string,
@@ -246,21 +269,26 @@ function questionCallout(
 
 function quizAnswerCallout(details: Record<string, unknown> | undefined): string {
 	const status = details?.status;
-	if (status === "cancelled") return callout("warning", "Quiz — cancelled", ["(user skipped)"]);
-	if (status === "unavailable") return callout("warning", "Quiz — unavailable", [safeText(details?.message)]);
-	if (status !== "answered") return callout("warning", "Quiz — feedback unavailable", ["Result metadata was incomplete."]);
+	if (status === "cancelled") return callout("warning", "Result — cancelled", ["(user skipped)"]);
+	if (status === "unavailable") return callout("warning", "Result — unavailable", [safeText(details?.message)]);
+	if (status !== "answered") return callout("warning", "Result — feedback unavailable", ["Result metadata was incomplete."]);
 
 	const dontKnow = details?.dontKnow === true;
 	const correct = details?.correct === true;
 	const type = dontKnow ? "question" : correct ? "success" : "failure";
-	const title = dontKnow ? "Quiz — I don't know" : correct ? "Quiz — correct ✓" : "Quiz — incorrect ✗";
-	const body: string[] = [];
-	if (details?.note) body.push(`Note: ${safeText(details.note)}`);
-	if (details?.explanation) {
-		if (body.length > 0) body.push("");
-		body.push(...safeText(details.explanation).split(/\r?\n/));
-	}
-	return callout(type, title, body.length > 0 ? body : [" "]);
+	const title = dontKnow ? "Result — I don't know" : correct ? "Result — correct ✓" : "Result — incorrect ✗";
+	const hiddenMetadata = [
+		typeof details?.conceptId === "string" ? `Concept: ${safeText(details.conceptId)}` : "",
+		typeof details?.interactionId === "string" ? `Interaction: ${safeText(details.interactionId)}` : "",
+		typeof details?.mode === "string" ? `Question type: ${safeText(details.mode)}` : "",
+		typeof details?.explanation === "string" ? safeText(details.explanation) : "",
+	].filter(Boolean);
+	return [
+		callout(type, title, []),
+		collapsedDetails("Question details", hiddenMetadata.length > 0
+			? callout("note", "Explanation and assessment context", hiddenMetadata)
+			: ""),
+	].filter(Boolean).join("\n\n");
 }
 
 function askAnswerCallout(details: Record<string, unknown> | undefined): string {
@@ -348,7 +376,7 @@ export function formatImageNote(title: string, caption: string): string {
 
 function formatQuiz(block: Extract<TranscriptBlock, { kind: "quiz" }>, round: number): string {
 	const pending = block.details === undefined;
-	const question = questionCallout("Quiz", block.question, block.context, block.options, block.details);
+	const question = questionCallout("Question", block.question, block.context, block.options, block.details);
 	const scratchpad = typeof block.details?.scratchpad === "string" ? block.details.scratchpad : "";
 	const backticks = Math.max(3, ...[...scratchpad.matchAll(/`+/g)].map((match) => match[0].length + 1));
 	const fence = "`".repeat(backticks);
@@ -377,16 +405,46 @@ function formatFreeResponse(block: Extract<TranscriptBlock, { kind: "free_respon
 	const continuation = lineBreak
 		? block.response.slice(lineBreak.index + lineBreak[0].length)
 		: "";
-	const responseCallout = callout("idea", "Learner's response", [firstSection]);
+	const responseCallout = callout("example", "Answer", [firstSection]);
 	const continuationQuote = continuation
 		? continuation.split(/\r\n|\n|\r/).map((line) => line ? `> ${line}` : ">").join("\n")
 		: "";
+	const hiddenMetadata = [
+		`Interaction: ${safeText(block.interactionId)}`,
+		block.conceptId ? `Concept: ${safeText(block.conceptId)}` : "",
+		block.responseTimeMs !== undefined ? `Response time: ${Math.max(0, Math.round(block.responseTimeMs / 1000))} seconds` : "",
+	].filter(Boolean);
 	return [
 		`## ${normalizeHeadingTitle(block.summaryTitle || "Free response")}`,
-		questionCallout("Prompt", block.question, undefined, []),
+		questionCallout("Question", block.question, undefined, []),
 		responseCallout,
 		continuationQuote,
+		collapsedDetails("Question details", callout("note", "Interaction metadata", hiddenMetadata)),
 	].filter(Boolean).join("\n\n");
+}
+
+function formatLearningInterview(block: Extract<TranscriptBlock, { kind: "learning_interview" }>): string {
+	const questionAnswers = block.questions.map(({ question, answer }, index) => [
+		callout("question", `Focus ${index + 1}`, question.split(/\r?\n/)),
+		callout("example", "Learner's answer", answer.trim()
+			? answer.split(/\r?\n/)
+			: ["(skipped)"]),
+	].join("\n\n"));
+	const purpose = block.purpose === "session-intake"
+		? "New-session learning goals"
+		: "Post-assessment learning goals";
+	return [
+		`## ${normalizeHeadingTitle(block.summaryTitle)}`,
+		collapsedDetails("Learning goals and interview answers", [
+			callout("note", purpose, [
+				`Interview: ${safeText(block.interviewId)}`,
+				block.responseTimeMs !== undefined
+					? `Response time: ${Math.max(0, Math.round(block.responseTimeMs / 1000))} seconds`
+					: "",
+			].filter(Boolean)),
+			...questionAnswers,
+		].join("\n\n")),
+	].join("\n\n");
 }
 
 function formatAttempt(block: Extract<TranscriptBlock, { kind: "attempt" }>): string {
@@ -398,14 +456,26 @@ function formatAttempt(block: Extract<TranscriptBlock, { kind: "attempt" }>): st
 		const previous = block.previousMastery === undefined ? "Baseline" : block.previousMastery.toFixed(2);
 		body.push("", `Mastery: ==🟣 ${previous} → ${block.masteryState.score.toFixed(2)} / 10==`);
 	} else if (block.masteryState) {
-		body.push("", `Mastery baseline: ${block.masteryState.evidenceCount}/3 questions — score withheld until the sample is sufficient.`);
+		body.push("", "Legacy mastery baseline: no score was available in the recorded state.");
 	} else if (block.previousMastery !== undefined && block.newMastery !== undefined) {
 		body.push("", `Legacy mastery (0–1 scale): ${block.previousMastery.toFixed(2)} → ${block.newMastery.toFixed(2)}`);
 	}
 	if (block.confidence !== undefined) body.push("", `Inferred confidence: ${block.confidence.toFixed(1)} / 10`);
+	if (block.evidenceScore !== undefined) body.push("", `Evidence score: ${block.evidenceScore.toFixed(1)} / 10`);
+	if (block.evidenceType) body.push("", `Evidence type: ${safeText(block.evidenceType)}`);
+	if (block.evidenceWeight !== undefined) body.push(`Evidence weight: ${block.evidenceWeight.toFixed(2)}`);
+	if (block.roundId) body.push("", `Round: ${safeText(block.roundId)}`);
+	if (block.coverage?.length) body.push("", `Coverage: ${block.coverage.map(safeText).join(", ")}`);
+	if (block.sourceInteractionIds?.length) body.push("", `Source interactions: ${block.sourceInteractionIds.map(safeText).join(", ")}`);
+	if (block.masteryState?.reasoningSummary) body.push("", `Reasoning summary: ${safeText(block.masteryState.reasoningSummary)}`);
 	return [
-		`## Attempt: ${normalizeHeadingTitle(block.conceptId)}`,
-		callout(type, `Evaluation — ${title}`, body),
+		collapsedDetails(
+			"Assessment details",
+			[
+				`## Assessment: ${normalizeHeadingTitle(block.conceptId)}`,
+				callout(type, `Evaluation — ${title}`, body),
+			].join("\n\n"),
+		),
 	].join("\n\n");
 }
 
@@ -489,8 +559,13 @@ export function renderTranscript(blocks: TranscriptBlock[]): string {
 			continue;
 		}
 
+		if (block.kind === "learning_interview") {
+			output.push(formatLearningInterview(block));
+			continue;
+		}
+
 		if (block.kind === "attempt") {
-			output.push(formatAttempt(block));
+			if (block.includeInMdLog !== false) output.push(formatAttempt(block));
 			continue;
 		}
 
@@ -1359,7 +1434,7 @@ export function buildBackfill(entriesValue: unknown): BackfillResult {
 				continue;
 			}
 			if (entry.customType === "teach-free-response" && isRecord(entry.data)) {
-				const { callId, interactionId, question, response, conceptId, summaryTitle } = entry.data;
+				const { callId, interactionId, question, response, conceptId, summaryTitle, responseTimeMs } = entry.data;
 				if ([callId, interactionId, question, response].every((value) => typeof value === "string")) {
 					blocks.push({
 						kind: "free_response",
@@ -1369,9 +1444,44 @@ export function buildBackfill(entriesValue: unknown): BackfillResult {
 						response,
 						summaryTitle: typeof summaryTitle === "string" ? summaryTitle : undefined,
 						conceptId: typeof conceptId === "string" ? conceptId : undefined,
+						responseTimeMs: typeof responseTimeMs === "number" && Number.isFinite(responseTimeMs)
+							? responseTimeMs
+							: undefined,
 					});
 				} else {
 					diagnostics.push("Ignored a malformed teaching free-response entry.");
+				}
+				continue;
+			}
+			if (entry.customType === "teach-learning-interview" && isRecord(entry.data)) {
+				const data = entry.data;
+				if (
+					typeof data.callId === "string" &&
+					typeof data.interviewId === "string" &&
+					(data.purpose === "session-intake" || data.purpose === "post-assessment") &&
+					typeof data.summaryTitle === "string" &&
+					Array.isArray(data.questions) &&
+					data.questions.length >= 3 &&
+					data.questions.length <= 5 &&
+					data.questions.every((item: unknown) =>
+						isRecord(item) && typeof item.question === "string" && typeof item.answer === "string")
+				) {
+					blocks.push({
+						kind: "learning_interview",
+						callId: data.callId,
+						interviewId: data.interviewId,
+						purpose: data.purpose,
+						summaryTitle: data.summaryTitle,
+						questions: data.questions.map((item: Record<string, string>) => ({
+							question: item.question,
+							answer: item.answer,
+						})),
+						responseTimeMs: typeof data.responseTimeMs === "number" && Number.isFinite(data.responseTimeMs)
+							? data.responseTimeMs
+							: undefined,
+					});
+				} else {
+					diagnostics.push("Ignored a malformed teaching learning interview entry.");
 				}
 				continue;
 			}
@@ -1408,6 +1518,16 @@ export function buildBackfill(entriesValue: unknown): BackfillResult {
 						outcome: data.outcome,
 						explanation: data.explanation,
 						misconception: typeof data.misconception === "string" ? data.misconception : undefined,
+						evidenceType: typeof data.evidenceType === "string" ? data.evidenceType : undefined,
+						evidenceWeight: typeof data.evidenceWeight === "number" ? data.evidenceWeight : undefined,
+						roundId: typeof data.roundId === "string" ? data.roundId : undefined,
+						sourceInteractionIds: Array.isArray(data.sourceInteractionIds)
+							? data.sourceInteractionIds.filter((id: unknown): id is string => typeof id === "string")
+							: undefined,
+						coverage: Array.isArray(data.coverage)
+							? data.coverage.filter((item: unknown): item is string => typeof item === "string")
+							: undefined,
+						includeInMdLog: data.includeInMdLog !== false,
 						previousMastery: data.previousMastery,
 						newMastery: data.newMastery,
 						masteryState,

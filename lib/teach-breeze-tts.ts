@@ -40,6 +40,8 @@ export interface BreezeVoicePreset {
 	mode: "standard" | "clone";
 	wavsDirectory?: string;
 	transcriptsDirectory?: string;
+	styleInstructionsPath?: string;
+	styleInstructions?: string;
 }
 
 function isWithin(root: string, candidate: string): boolean {

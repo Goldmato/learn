@@ -62,10 +62,18 @@ test("teaching skill requires per-dispatch consent and persists returned plans",
 	assert.match(skill, /one focused `researcher` agent/);
 });
 
-test("teaching mastery uses three evidence samples and a clean-room cross-provider critic", () => {
+test("teaching mastery records immediate weighted evidence and uses a clean-room cross-provider critic", () => {
 	const skill = fs.readFileSync(path.join(repoRoot, "skills", "teach", "SKILL.md"), "utf-8");
 	assert.match(skill, /Supply `conceptId` on every teaching `quiz`/);
-	assert.match(skill, /three distinct graded questions/);
+	assert.match(skill, /A mastery score is available from the first recorded event/);
+	assert.match(skill, /A baseline is a purpose, not a question format/);
+	assert.match(skill, /teach_record_round_assessment/);
+	assert.match(skill, /never target a fixed count or pad/);
+	assert.match(skill, /A multiple-choice answer tests recognition among those options/);
+	assert.match(skill, /rather than repeating one convenient template/);
+	assert.match(skill, /If the learner requests listening or chooses a mixed language-practice round/);
+	assert.match(skill, /Choose media from the learning objective, not from a blanket/);
+	assert.match(skill, /explicitly set `executionMode`/);
 	assert.match(skill, /0\.8–1\.0/);
 	assert.match(skill, /Do not include mastery scores, prior learner history/);
 	assert.match(skill, /If the selected model\/provider or Agent tool is unavailable, proceed without critique/);
@@ -88,14 +96,27 @@ test("teaching mastery uses three evidence samples and a clean-room cross-provid
 	}
 });
 
+test("quiz and Breeze guidance distinguish language modalities and preserve diagnostic quality", () => {
+	const quiz = fs.readFileSync(path.join(repoRoot, "extensions", "quiz.ts"), "utf-8");
+	const breeze = fs.readFileSync(path.join(repoRoot, "extensions", "teach-breeze-tts.ts"), "utf-8");
+	const learningTools = fs.readFileSync(path.join(repoRoot, "extensions", "teach-learning-tools.ts"), "utf-8");
+	assert.match(quiz, /Do not make every item the same/);
+	assert.match(quiz, /A correct selected option is evidence only for that narrowly tested recognition decision/);
+	assert.match(quiz, /if the learner requested listening or chose a mixed language-practice round/i);
+	assert.match(learningTools, /Do not treat an unspecified 'blend' as text-only by default/);
+	assert.match(breeze, /an explicitly requested listening objective or a learner-selected mixed listening\/read\/retrieval round/i);
+	assert.match(breeze, /do not expose the source sentence, pinyin, translation, or audio transcript until after the learner responds/i);
+});
+
 test("Breeze TTS subagent has only its audio-generation tool", () => {
 	const { source, frontmatter } = readAgent("breeze-tts-maker");
 	assert.match(frontmatter, /^tools: ext:breeze-tts\/teach_breeze_generate_audio$/m);
 	assert.match(frontmatter, /^extensions: \.pi\\agents\\extensions\\breeze-tts\.ts$/m);
 	assert.match(frontmatter, /^inherit_context: false$/m);
 	assert.match(frontmatter, /^prompt_mode: replace$/m);
-	assert.match(source, /parenthetical tags for relevant vocal sounds/);
-	assert.match(source, /expressive dramatic quirky creative speech/);
+	assert.match(source, /For `exact`, speak `narrationText` verbatim/);
+	assert.match(source, /For `interpretive`/);
+	assert.match(source, /expressive dramatic quirky/);
 	assert.match(source, /Do not inspect or edit the linked note/);
 	assert.match(source, /main agent validates and places the generated audio/i);
 	const extensionPath = /^extensions:\s*(.+)$/m.exec(frontmatter)?.[1];

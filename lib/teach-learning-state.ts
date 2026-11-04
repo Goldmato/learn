@@ -29,12 +29,14 @@ export interface MasteryEvidence {
 	interactionId: string;
 	score: number;
 	confidence: number;
+	evidenceWeight?: number;
 	reasoningSummary?: string;
 }
 
 export interface TeachingHistory {
 	responses: Map<string, TeachingResponse>;
 	recordedInteractionIds: Set<string>;
+	recordedConceptIds: Map<string, string>;
 	mastery: Map<string, MasteryRecord>;
 }
 
@@ -44,18 +46,11 @@ export function resolveTeachingResponse(
 ): TeachingResponse | undefined {
 	const exact = responses.get(interactionId);
 	if (exact) return exact;
-
-	const quizMatches = [...responses.values()].filter((response) =>
-		response.source === "quiz" && response.interactionId.startsWith(`${interactionId}|`),
-	);
-	if (quizMatches.length > 1) {
-		throw new Error(`Interaction prefix "${interactionId}" matches multiple quiz responses; use the full interactionId.`);
-	}
-	return quizMatches[0];
+	return undefined;
 }
 
-const INITIAL_QUESTION_COUNT = 3;
-const INITIAL_BASELINE_WEIGHT = 3;
+export const MAX_INTERACTION_EVIDENCE_WEIGHT = 1;
+export const MAX_ROUND_ASSESSMENT_WEIGHT = 3;
 
 export function masteryEvidenceWeight(confidence: number): number {
 	if (!Number.isFinite(confidence) || confidence < 0 || confidence > 10) {
@@ -74,34 +69,25 @@ export function updateTeachingMastery(
 		throw new Error("evidence score must be a finite number from 0 to 10.");
 	}
 	const weight = masteryEvidenceWeight(evidence.confidence);
+	const evidenceWeight = evidence.evidenceWeight ?? weight;
+	if (!Number.isFinite(evidenceWeight) || evidenceWeight <= 0 || evidenceWeight > MAX_ROUND_ASSESSMENT_WEIGHT) {
+		throw new Error(`evidenceWeight must be greater than 0 and no more than ${MAX_ROUND_ASSESSMENT_WEIGHT}.`);
+	}
 	const count = (previous?.evidenceCount ?? 0) + 1;
-	const record: MasteryRecord = {
+	const previousWeight = previous?.evidenceWeight ?? 0;
+	const previousSum = previous?.evidenceSum ??
+		(previous?.score === undefined ? 0 : previous.score * previousWeight);
+	const totalWeight = previousWeight + evidenceWeight;
+	const totalSum = previousSum + evidence.score * evidenceWeight;
+	return {
+		score: roundScore(totalSum / totalWeight),
 		evidenceCount: count,
-		evidenceWeight: previous?.evidenceWeight ?? 0,
+		evidenceWeight: totalWeight,
+		evidenceSum: totalSum,
 		lastInteractionId: evidence.interactionId,
 		confidence: evidence.confidence,
 		reasoningSummary: evidence.reasoningSummary?.trim() || undefined,
 	};
-
-	if (previous?.score === undefined) {
-		const evidenceSum = (previous?.evidenceSum ?? 0) + evidence.score * weight;
-		const evidenceWeight = (previous?.evidenceWeight ?? 0) + weight;
-		if (count < INITIAL_QUESTION_COUNT) {
-			record.evidenceWeight = evidenceWeight;
-			record.evidenceSum = evidenceSum;
-			return record;
-		}
-		record.score = roundScore(evidenceSum / evidenceWeight);
-		record.evidenceWeight = INITIAL_BASELINE_WEIGHT;
-		return record;
-	}
-
-	const priorWeight = Math.max(INITIAL_BASELINE_WEIGHT, previous.evidenceWeight);
-	const change = (weight / (priorWeight + weight)) * (evidence.score - previous.score);
-	const roundedChange = Math.trunc(change * 100) / 100;
-	record.score = roundScore(previous.score + roundedChange);
-	record.evidenceWeight = priorWeight + weight;
-	return record;
 }
 
 function roundScore(score: number): number {
@@ -120,6 +106,7 @@ export function readTeachingHistory(
 
 	const responses = new Map<string, TeachingResponse>();
 	const recordedInteractionIds = new Set<string>();
+	const recordedConceptIds = new Map<string, string>();
 	const mastery = new Map(persistedMastery);
 	for (const block of blocks) {
 		if (block.kind === "free_response") {
@@ -134,6 +121,7 @@ export function readTeachingHistory(
 			});
 		} else if (block.kind === "attempt") {
 			recordedInteractionIds.add(block.interactionId);
+			recordedConceptIds.set(block.interactionId, block.conceptId);
 			if (block.masteryState) {
 				const current = mastery.get(block.conceptId);
 				if (!current || block.masteryState.evidenceCount >= current.evidenceCount) {
@@ -161,7 +149,7 @@ export function readTeachingHistory(
 			});
 		}
 	}
-	return { responses, recordedInteractionIds, mastery };
+	return { responses, recordedInteractionIds, recordedConceptIds, mastery };
 }
 
 function frontmatterBounds(markdown: string): { start: number; end: number; bodyStart: number } | undefined {
@@ -339,13 +327,18 @@ function renderMasteryFrontmatter(records: Map<string, MasteryRecord>): string {
 	return lines.join("\n");
 }
 
-export function updateMasteryFrontmatter(markdown: string, conceptId: string, record: MasteryRecord): string {
+export function updateMasteryFrontmatter(
+	markdown: string,
+	conceptId: string,
+	record: MasteryRecord,
+	options: { force?: boolean } = {},
+): string {
 	if (!conceptId.trim()) throw new Error("conceptId must contain non-whitespace text.");
 	const bounds = frontmatterBounds(markdown);
 	const records = readMasteryFrontmatter(markdown);
 	const current = records.get(conceptId);
-	if (current && record.evidenceCount < current.evidenceCount) return markdown;
-	if (current && record.evidenceCount === current.evidenceCount && record.lastInteractionId !== current.lastInteractionId) return markdown;
+	if (!options.force && current && record.evidenceCount < current.evidenceCount) return markdown;
+	if (!options.force && current && record.evidenceCount === current.evidenceCount && record.lastInteractionId !== current.lastInteractionId) return markdown;
 	records.set(conceptId, record);
 	const rendered = renderMasteryFrontmatter(records);
 

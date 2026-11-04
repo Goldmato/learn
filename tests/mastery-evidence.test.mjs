@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+	appendMasteryEvidenceRoundAssessment,
 	appendMasteryEvidenceSample,
 	masteryEvidenceStorePath,
 	mergeMasteryEvidenceEvents,
@@ -43,6 +44,42 @@ test("mastery evidence is persisted once and deterministically replayed from ord
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
 	}
+});
+
+test("weighted round assessments replay alongside individual evidence without replacing it", () => {
+	let store = { version: 1, events: [] };
+	store = appendMasteryEvidenceSample(store, sample("concept", "answer-1", 8, 10));
+	store = appendMasteryEvidenceRoundAssessment(store, {
+		conceptId: "concept",
+		interactionId: "round-call-full-id",
+		roundId: "round-call-full-id",
+		interactionIds: ["answer-1"],
+		outcome: "partial",
+		score: 4,
+		confidence: 6,
+		evidenceWeight: 2,
+		coverage: ["definitions", "application"],
+		rationale: "Strong recall, but transfer to application was inconsistent.",
+		recordedAt: 20,
+	});
+
+	const record = replayMasteryEvidence(store.events, "concept");
+	assert.equal(record.evidenceCount, 2);
+	assert.equal(record.evidenceWeight, 2.9);
+	assert.equal(record.score, 5.24);
+	assert.throws(() => appendMasteryEvidenceRoundAssessment(store, {
+		conceptId: "concept",
+		interactionId: "second-round",
+		roundId: "second-round",
+		interactionIds: ["answer-1"],
+		outcome: "partial",
+		score: 4,
+		confidence: 6,
+		evidenceWeight: 2,
+		coverage: ["application"],
+		rationale: "Repeated source interaction.",
+		recordedAt: 30,
+	}), /already contributes/);
 });
 
 test("legacy baselines preserve existing aggregates and explicitly block unsafe evidence merges", () => {
@@ -103,4 +140,27 @@ test("merging evidence deduplicates identical interaction events and rejects con
 		events: [sample("source", "same", 10, 1), sample("canonical", "same", 0, 1)],
 	};
 	assert.throws(() => mergeMasteryEvidenceEvents(conflict, "source", "canonical"), /conflicting evidence/);
+});
+
+test("round evidence keeps its source interactions and replays after a canonical concept merge", () => {
+	let store = { version: 1, events: [] };
+	store = appendMasteryEvidenceSample(store, sample("source", "answer-1", 10, 10));
+	store = appendMasteryEvidenceRoundAssessment(store, {
+		conceptId: "source",
+		interactionId: "round-1",
+		roundId: "round-1",
+		interactionIds: ["answer-1"],
+		outcome: "correct",
+		score: 9,
+		confidence: 7,
+		evidenceWeight: 2,
+		coverage: ["recall", "application"],
+		rationale: "Both recall and application were demonstrated.",
+		recordedAt: 20,
+	});
+
+	const merged = mergeMasteryEvidenceEvents(store, "source", "canonical");
+	assert.equal(merged.events.length, 2);
+	assert.deepEqual(merged.events.map((event) => event.conceptId), ["canonical", "canonical"]);
+	assert.equal(replayMasteryEvidence(merged.events, "canonical").evidenceCount, 2);
 });

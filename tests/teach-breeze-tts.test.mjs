@@ -79,6 +79,15 @@ function createTtsFixture(outcomes = []) {
 	return { root, vaultRoot, notePath, conceptText, entries, toolCalls, registeredTools, handlers, eventHandlers, pi, ctx };
 }
 
+function backgroundRequest(conceptText, scriptMode = "interpretive", narrationText) {
+	return {
+		conceptText,
+		executionMode: "background",
+		scriptMode,
+		...(narrationText ? { narrationText } : {}),
+	};
+}
+
 test("audio helpers insert, validate, attach, link, and remove exact WAV placeholders", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "breeze-audio-helper-"));
 	const vaultRoot = path.join(root, "vault");
@@ -350,9 +359,12 @@ test("main Breeze tool dispatches only logged points, preserves failures for ret
 	try {
 		const tool = fixture.registeredTools.get("teach_breeze_tts");
 		assert.ok(tool);
-		assert.deepEqual(Object.keys(tool.parameters.properties), ["conceptText", "retryMarkerId"]);
+		assert.deepEqual(Object.keys(tool.parameters.properties), [
+			"conceptText", "retryMarkerId", "executionMode", "scriptMode",
+			"narrationText", "voiceInstruction", "audioDescription",
+		]);
 		await assert.rejects(
-			tool.execute("tts-bad", { conceptText: "This was not logged." }, undefined, undefined, fixture.ctx),
+			tool.execute("tts-bad", backgroundRequest("This was not logged."), undefined, undefined, fixture.ctx),
 			/conceptText must be exact text/,
 		);
 		assert.deepEqual(fixture.toolCalls, []);
@@ -368,14 +380,14 @@ test("main Breeze tool dispatches only logged points, preserves failures for ret
 			"utf-8",
 		);
 		const entriesBeforeRepeat = fixture.entries.length;
-		const repeated = await tool.execute("tts-repeat", { conceptText: fixture.conceptText }, undefined, undefined, fixture.ctx);
+		const repeated = await tool.execute("tts-repeat", backgroundRequest(fixture.conceptText), undefined, undefined, fixture.ctx);
 		assert.equal(repeated.details.status, "failed");
 		assert.equal(fixture.toolCalls.length, 1);
 		removeAudioPlaceholder(fixture.notePath, repeated.details.markerId);
 		fixture.entries.length = entriesBeforeRepeat;
 		fixture.toolCalls.length = 0;
 
-		const failed = await tool.execute("tts", { conceptText: fixture.conceptText }, undefined, undefined, fixture.ctx);
+		const failed = await tool.execute("tts", backgroundRequest(fixture.conceptText), undefined, undefined, fixture.ctx);
 		const marker = /%%pi-breeze-tts:([a-f0-9-]{36})%%/.exec(fs.readFileSync(fixture.notePath, "utf-8"));
 		assert.ok(marker, "failed generation should leave its marker available for retry");
 		assert.equal(failed.details.status, "failed");
@@ -435,6 +447,78 @@ test("main Breeze tool dispatches only logged points, preserves failures for ret
 	}
 });
 
+test("new Breeze requests require an explicit route and valid exact scripts for synchronous generation", async () => {
+	const fixture = createTtsFixture();
+	try {
+		const tool = fixture.registeredTools.get("teach_breeze_tts");
+		await assert.rejects(
+			tool.execute("tts-no-mode", { conceptText: fixture.conceptText }, undefined, undefined, fixture.ctx),
+			/Choose executionMode and scriptMode/,
+		);
+		await assert.rejects(
+			tool.execute("tts-sync-short-description", {
+				conceptText: fixture.conceptText,
+				executionMode: "synchronous",
+				scriptMode: "exact",
+				narrationText: "A main-authored exact script.",
+				voiceInstruction: "Speak clearly and warmly.",
+				audioDescription: "A short voice clip",
+			}, undefined, undefined, fixture.ctx),
+			/exactly five words/,
+		);
+		await assert.rejects(
+			tool.execute("tts-background-exact-no-script", {
+				conceptText: fixture.conceptText,
+				executionMode: "background",
+				scriptMode: "exact",
+			}, undefined, undefined, fixture.ctx),
+			/requires narrationText/,
+		);
+		assert.deepEqual(fixture.toolCalls, []);
+		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /pi-breeze-tts:/);
+	} finally {
+		fs.rmSync(fixture.root, { recursive: true, force: true });
+	}
+});
+
+test("failed Breeze recovery removes a marker only after the learner chooses removal", async () => {
+	const cudaFailure = {
+		isError: true,
+		result: { content: [{ type: "text", text: "CUDA runtime unavailable" }] },
+	};
+	const fixture = createTtsFixture([cudaFailure]);
+	const notifications = [];
+	fixture.ctx.ui = {
+		async select() { return "Remove this marker"; },
+		notify(message, level) { notifications.push({ message, level }); },
+	};
+	try {
+		const result = await fixture.registeredTools.get("teach_breeze_tts").execute(
+			"tts-remove-choice",
+			backgroundRequest(fixture.conceptText),
+			undefined,
+			undefined,
+			fixture.ctx,
+		);
+		assert.equal(result.details.status, "failed");
+		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /pi-breeze-tts:/);
+		assert.ok(fixture.entries.some((entry) =>
+			entry.customType === TEACH_BREEZE_TTS_PLACEMENT_ENTRY &&
+			entry.data.markerId === result.details.markerId &&
+			entry.data.status === "cancelled",
+		));
+	} finally {
+		for (const { message } of notifications) {
+			const prefix = "Placement diagnostic saved to: ";
+			if (message.startsWith(prefix)) {
+				const diagnosticPath = message.slice(prefix.length).replace(/\.$/, "");
+				if (fs.existsSync(diagnosticPath)) fs.unlinkSync(diagnosticPath);
+			}
+		}
+		fs.rmSync(fixture.root, { recursive: true, force: true });
+	}
+});
+
 test("main Breeze tool asks for and saves a preset when the linked note has none", async () => {
 	const fixture = createTtsFixture();
 	try {
@@ -474,7 +558,7 @@ test("main Breeze tool asks for and saves a preset when the linked note has none
 
 		const result = await fixture.registeredTools.get("teach_breeze_tts").execute(
 			"tts-select",
-			{ conceptText: fixture.conceptText },
+			backgroundRequest(fixture.conceptText),
 			undefined,
 			undefined,
 			fixture.ctx,
@@ -500,7 +584,7 @@ test("main Breeze tool asks for and saves a preset when the linked note has none
 		};
 		const restored = await fixture.registeredTools.get("teach_breeze_tts").execute(
 			"tts-restore",
-			{ conceptText: fixture.conceptText },
+			backgroundRequest(fixture.conceptText),
 			undefined,
 			undefined,
 			fixture.ctx,
@@ -534,7 +618,7 @@ test("main Breeze tool prompts for the standard voice when no clone manifest is 
 
 		const result = await fixture.registeredTools.get("teach_breeze_tts").execute(
 			"tts-standard",
-			{ conceptText: fixture.conceptText },
+			backgroundRequest(fixture.conceptText),
 			undefined,
 			undefined,
 			fixture.ctx,
@@ -573,7 +657,7 @@ test("main Breeze tool does not silently use the standard voice when selection i
 		await assert.rejects(
 			fixture.registeredTools.get("teach_breeze_tts").execute(
 				"tts-cancel",
-				{ conceptText: fixture.conceptText },
+				backgroundRequest(fixture.conceptText),
 				undefined,
 				undefined,
 				fixture.ctx,
@@ -591,7 +675,7 @@ test("main agent finalizes a staged WAV after background subagent completion", a
 	const fixture = createTtsFixture();
 	try {
 		const tool = fixture.registeredTools.get("teach_breeze_tts");
-		const dispatched = await tool.execute("tts", { conceptText: fixture.conceptText }, undefined, undefined, fixture.ctx);
+		const dispatched = await tool.execute("tts", backgroundRequest(fixture.conceptText), undefined, undefined, fixture.ctx);
 		const pending = fixture.entries.find((entry) =>
 			entry.customType === TEACH_BREEZE_TTS_PLACEMENT_ENTRY &&
 			entry.data.markerId === dispatched.details.markerId &&
@@ -638,12 +722,52 @@ test("main agent finalizes a staged WAV after background subagent completion", a
 	}
 });
 
+test("exact-script background generation rejects a changed transcript", async () => {
+	const fixture = createTtsFixture();
+	try {
+		const tool = fixture.registeredTools.get("teach_breeze_tts");
+		const exactScript = "Keep every word exactly as authored.";
+		const dispatched = await tool.execute(
+			"tts-exact",
+			backgroundRequest(fixture.conceptText, "exact", exactScript),
+			undefined,
+			undefined,
+			fixture.ctx,
+		);
+		const handoffPath = /^handoffPath: (.+)$/m.exec(fixture.toolCalls[0].args.prompt)?.[1];
+		assert.ok(handoffPath);
+		writeWav(handoffPath);
+		await fixture.pi.events.emit("subagents:completed", {
+			id: dispatched.details.agentId,
+			type: "breeze-tts-maker",
+			status: "completed",
+			result: [
+				"RESULT:",
+				"status: success",
+				`handoffPath: ${handoffPath}`,
+				"audioDescription: Sound Travels Through Moving Air",
+				`transcript: ${JSON.stringify("The subagent changed the script.")}`,
+			].join("\n"),
+		});
+		const failed = fixture.entries.filter((entry) =>
+			entry.customType === TEACH_BREEZE_TTS_PLACEMENT_ENTRY &&
+			entry.data.markerId === dispatched.details.markerId,
+		).at(-1);
+		assert.equal(failed.data.status, "failed");
+		assert.match(failed.data.error, /changed narrationText/);
+		assert.match(fs.readFileSync(fixture.notePath, "utf-8"), new RegExp(`%%pi-breeze-tts:${dispatched.details.markerId}%%`));
+		assert.doesNotMatch(fs.readFileSync(fixture.notePath, "utf-8"), /!\[\[.*breezetts/);
+	} finally {
+		fs.rmSync(fixture.root, { recursive: true, force: true });
+	}
+});
+
 test("session shutdown removes handoff directories for still-running Breeze jobs", async () => {
 	const fixture = createTtsFixture();
 	try {
 		const dispatched = await fixture.registeredTools.get("teach_breeze_tts").execute(
 			"tts-shutdown",
-			{ conceptText: fixture.conceptText },
+			backgroundRequest(fixture.conceptText),
 			undefined,
 			undefined,
 			fixture.ctx,
@@ -666,7 +790,7 @@ test("a stopped subagent is normalized to a retryable failure", async () => {
 	const fixture = createTtsFixture();
 	try {
 		const tool = fixture.registeredTools.get("teach_breeze_tts");
-		const first = await tool.execute("tts", { conceptText: fixture.conceptText }, undefined, undefined, fixture.ctx);
+		const first = await tool.execute("tts", backgroundRequest(fixture.conceptText), undefined, undefined, fixture.ctx);
 		assert.equal(first.details.status, "dispatched");
 		fixture.entries.push({
 			id: "breeze-failed",

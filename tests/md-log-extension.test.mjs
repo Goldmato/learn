@@ -242,8 +242,101 @@ test("resume-agent triggers a hidden custom continuation without appending user 
 	assert.equal(messages[0].message.customType, "md-log-resume-agent");
 	assert.equal(messages[0].message.display, false);
 	assert.equal(messages[0].options.triggerTurn, true);
+	assert.match(messages[0].message.content, /skills\/teach\/SKILL\.md/);
+	assert.match(messages[0].message.content, /do not use shell, grep, find, or file tools/);
+	assert.match(messages[0].message.content, /ask the learner to run \/md-log/);
+	assert.match(messages[0].message.content, /do not start a new quiz, interview, or replacement activity/);
+	assert.match(messages[0].message.content, /cancelled or skipped question is a learner choice/);
+	assert.match(messages[0].message.content, /wait for the learner's next request/);
+	assert.match(messages[0].message.content, /No md-log note is linked/);
 	assert.equal(entries.length, 1);
 	assert.ok(notifications.some(({ message }) => message.includes("continuation started")));
+});
+
+test("/rename lists vault note filenames and renames only the linked lesson log", async () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-md-log-rename-"));
+	const vaultRoot = path.join(root, "vault");
+	const lessonDirectory = path.join(vaultRoot, "200-Reviewing");
+	const notePath = path.join(lessonDirectory, "lesson-log.md");
+	fs.mkdirSync(path.join(vaultRoot, ".obsidian"), { recursive: true });
+	fs.mkdirSync(lessonDirectory, { recursive: true });
+	fs.mkdirSync(path.join(vaultRoot, ".pi"), { recursive: true });
+	fs.writeFileSync(notePath, "# Lesson\n\nTranscript content.\n", "utf-8");
+	fs.writeFileSync(path.join(vaultRoot, "chinese-word-review-2026-11-03.md"), "# Existing lesson\n", "utf-8");
+	fs.writeFileSync(path.join(vaultRoot, ".pi", "internal-note.md"), "# Hidden internal note\n", "utf-8");
+
+	try {
+		const handlers = new Map();
+		const commands = new Map();
+		const tools = new Map();
+		const entries = [{ id: "session", type: "session" }];
+		const messages = [];
+		const notifications = [];
+		const statuses = new Map();
+		const pi = {
+			on(name, handler) { handlers.set(name, handler); },
+			registerCommand(name, definition) { commands.set(name, definition.handler); },
+			registerTool(definition) { tools.set(definition.name, definition); },
+			appendEntry(customType, data) {
+				entries.push({ id: `custom-${entries.length}`, type: "custom", customType, data });
+			},
+			async sendMessage(message, options) { messages.push({ message, options }); },
+		};
+		mdLog(pi);
+		const ctx = {
+			cwd: vaultRoot,
+			isIdle: () => true,
+			sessionManager: { getEntries: () => entries },
+			ui: {
+				theme: { fg: (_color, text) => text },
+				setStatus(key, value) { statuses.set(key, value); },
+				notify(message, level) { notifications.push({ message, level }); },
+			},
+		};
+
+		await commands.get("md-log")(notePath, ctx);
+		await commands.get("rename")("", ctx);
+		const renameMessage = messages.find(({ message }) => message.customType === "md-log-rename");
+		assert.ok(renameMessage);
+		assert.match(renameMessage.message.content, /teach_list_vault_note_names/);
+		assert.equal(renameMessage.options.triggerTurn, true);
+
+		const listResult = await tools.get("teach_list_vault_note_names").execute("list", {}, undefined, undefined, ctx);
+		assert.match(listResult.content[0].text, /chinese-word-review-2026-11-03\.md/);
+		assert.match(listResult.content[0].text, /200-Reviewing\/lesson-log\.md/);
+		assert.doesNotMatch(listResult.content[0].text, /internal-note\.md/);
+		assert.equal(listResult.details.total, 2);
+
+		const contentBeforeRename = fs.readFileSync(notePath, "utf-8");
+		const newPath = path.join(lessonDirectory, "Chinese Word Review - Lesson 3.md");
+		const renameResult = await tools.get("teach_rename_md_log").execute(
+			"rename",
+			{ fileName: "Chinese Word Review - Lesson 3" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.equal(renameResult.details.status, "renamed");
+		assert.equal(fs.existsSync(notePath), false);
+		assert.equal(fs.readFileSync(newPath, "utf-8"), contentBeforeRename);
+		assert.equal(entries.at(-1).customType, "md-log");
+		assert.equal(entries.at(-1).data.file, newPath);
+		assert.match(statuses.get("md-log"), /Chinese Word Review - Lesson 3\.md/);
+
+		fs.writeFileSync(path.join(lessonDirectory, "Already Taken.md"), "Keep this note.\n", "utf-8");
+		await assert.rejects(
+			tools.get("teach_rename_md_log").execute("collision", { fileName: "Already Taken" }, undefined, undefined, ctx),
+			/already exists/,
+		);
+		await assert.rejects(
+			tools.get("teach_rename_md_log").execute("path", { fileName: "..\\outside" }, undefined, undefined, ctx),
+			/basename, not a path/,
+		);
+		assert.ok(fs.existsSync(newPath));
+		assert.ok(notifications.some(({ message, level }) => level === "success" && message.includes("Renamed lesson log")));
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("new or forked session reports the restored md-log target", async () => {
@@ -528,6 +621,22 @@ test("extension links a note, updates live quiz rounds, and preserves note conte
 			},
 		}, ctx);
 		await handlers.get("tool_result")({
+			toolName: "teach_learning_interview",
+			toolCallId: "live-learning-interview",
+			details: {
+				status: "answered",
+				interviewId: "teach-interview-123",
+				purpose: "session-intake",
+				summaryTitle: "Clarifying Learning Goals",
+				questions: [
+					{ question: "What sparked your interest?", answer: "I want to understand the mechanism." },
+					{ question: "Which aspect matters most?", answer: "How the ideas connect." },
+					{ question: "What would you like to be able to do?", answer: "Explain it from first principles." },
+				],
+				responseTimeMs: 14_000,
+			},
+		}, ctx);
+		await handlers.get("tool_result")({
 			toolName: "teach_record_attempt",
 			toolCallId: "live-attempt",
 			details: {
@@ -551,11 +660,13 @@ test("extension links a note, updates live quiz rounds, and preserves note conte
 		const withFreeResponse = fs.readFileSync(notePath, "utf-8");
 		assert.match(withFreeResponse, /^"mastery__clear-boundaries__score": 5\.2$/m);
 		assert.match(withFreeResponse, /^"mastery__clear-boundaries__evidence-count": 4$/m);
-		assert.match(withFreeResponse, /> \[!idea\] Learner's response\n> I would reply plainly\./);
+		assert.match(withFreeResponse, /> \[!example\] Answer\n> I would reply plainly\./);
 		assert.match(withFreeResponse, /> I chose not to manage their reaction\./);
 		assert.match(withFreeResponse, /> \[!warning\] Evaluation — Partially correct/);
 		assert.match(withFreeResponse, /Mastery: ==🟣 5\.00 → 5\.20 \/ 10==/);
 		assert.match(withFreeResponse, /^## Writing a Clear Reply$/m);
+		assert.match(withFreeResponse, /> \[!note\]- Learning goals and interview answers/);
+		assert.match(withFreeResponse, /> > \[!example\] Learner's answer\n> > I want to understand the mechanism\./);
 		assert.doesNotMatch(withFreeResponse, /teach_free_response|interaction teach-free-123/);
 
 		await commands.get("quiz-start")("Manual set", ctx);
@@ -671,6 +782,9 @@ test("linking a note imports its managed transcript once and keeps it in the man
 		"",
 		"Authored ending.",
 		"",
+		"<!-- pi-end-lesson:v1",
+		"Next: Continue after the completed question.",
+		"-->"
 	].join("\n");
 	fs.writeFileSync(notePath, initialNote, "utf-8");
 
@@ -709,9 +823,13 @@ test("linking a note imports its managed transcript once and keeps it in the man
 
 		await commands.get("md-log")(notePath, ctx);
 		const firstWrite = fs.readFileSync(notePath, "utf-8");
-		assert.equal(contextMessages.length, 1);
-		assert.equal(contextMessages[0].options.triggerTurn, false);
-		assert.match(contextMessages[0].message.content, /Work already completed\./);
+		const transcriptContext = contextMessages.find(({ message }) => message.customType === "md-log-context");
+		assert.ok(transcriptContext);
+		assert.equal(transcriptContext.options.triggerTurn, false);
+		assert.match(transcriptContext.message.content, /Work already completed\./);
+		assert.match(transcriptContext.message.content, /now included in the agent's conversation context/);
+		assert.match(transcriptContext.message.content, /do not use shell, grep, find, or file-reading tools/);
+		assert.doesNotMatch(transcriptContext.message.content, /pi-end-lesson/);
 		assert.match(firstWrite, /Authored introduction\./);
 		assert.match(firstWrite, /# Prior session[\s\S]*Work already completed\./);
 		assert.match(firstWrite, /Authored ending\./);
@@ -719,7 +837,7 @@ test("linking a note imports its managed transcript once and keeps it in the man
 
 		await commands.get("md-log")(notePath, ctx);
 		const secondWrite = fs.readFileSync(notePath, "utf-8");
-		assert.equal(contextMessages.length, 1);
+		assert.equal(contextMessages.filter(({ message }) => message.customType === "md-log-context").length, 1);
 		assert.equal((secondWrite.match(/Work already completed\./g) || []).length, 1);
 	} finally {
 		if (fs.existsSync(notePath)) fs.unlinkSync(notePath);
@@ -776,6 +894,10 @@ test("/end-lesson saves a hidden resume marker and restores the latest state as 
 		};
 
 		await commands.get("md-log")(notePath, ctx);
+		const olderMarker = "<!-- pi-end-lesson:v1\nOlder resume point.\n-->";
+		if (!fs.readFileSync(notePath, "utf-8").includes(olderMarker)) {
+			fs.appendFileSync(notePath, `\n${olderMarker}\n`, "utf-8");
+		}
 		agentIdle = false;
 		const modalHandle = { setHidden() {}, focus() {} };
 		trackAnswerModal(modalHandle, {
@@ -792,6 +914,8 @@ test("/end-lesson saves a hidden resume marker and restores the latest state as 
 		assert.ok(endMessage);
 		assert.equal(endMessage.options.triggerTurn, true);
 		assert.match(endMessage.message.content, /active unanswered question/);
+		assert.match(endMessage.message.content, /lesson ended with no interaction pending/);
+		assert.match(endMessage.message.content, /A cancelled\/skipped dialog is not an unanswered question/);
 		assert.match(endMessage.message.content, /under 300 characters/);
 		assert.match(endMessage.message.content, /"selected":\[\{"label":"ATP","value":"atp"\}\]/);
 		assert.ok(notifications.some(({ message }) => message.includes("Lesson wrap-up requested")));
@@ -806,32 +930,50 @@ test("/end-lesson saves a hidden resume marker and restores the latest state as 
 		);
 		const result = await tool.execute("end", { state }, undefined, undefined, ctx);
 		assert.equal(result.details.status, "recorded");
+		assert.equal(result.details.replacedPrevious, true);
 		const marker = `<!-- pi-end-lesson:v1\n${state}\n-->`;
 		assert.ok(fs.readFileSync(notePath, "utf-8").endsWith(`${marker}\n`));
+		assert.equal((fs.readFileSync(notePath, "utf-8").match(/<!-- pi-end-lesson:v1/g) || []).length, 1);
 		const duplicate = await tool.execute("end-again", { state }, undefined, undefined, ctx);
-		assert.equal(duplicate.details.status, "already-recorded");
+		assert.equal(duplicate.details.status, "recorded");
+		assert.equal((fs.readFileSync(notePath, "utf-8").match(/<!-- pi-end-lesson:v1/g) || []).length, 1);
 
 		await handlers.get("message_end")({
 			message: { role: "assistant", content: [{ type: "text", text: "The lesson is paused. Here is the resume summary." }] },
 		}, ctx);
 		assert.doesNotMatch(fs.readFileSync(notePath, "utf-8"), /Here is the resume summary/);
 		handlers.get("agent_end")();
+		assert.ok(fs.readFileSync(notePath, "utf-8").includes(marker));
 
 		const restoredMessages = [];
 		const restoreHandlers = new Map();
+		const restoreCommands = new Map();
 		const restorePi = {
 			on(name, handler) { restoreHandlers.set(name, handler); },
-			registerCommand() {},
+			registerCommand(name, definition) { restoreCommands.set(name, definition.handler); },
 			registerTool() {},
+			appendEntry(customType, data) { entries.push({ id: `restore-${entries.length}`, type: "custom", customType, data }); },
 			async sendMessage(message, options) { restoredMessages.push({ message, options }); },
 		};
 		mdLog(restorePi);
-		await restoreHandlers.get("session_start")({ reason: "resume" }, ctx);
+		agentIdle = true;
+		await restoreCommands.get("md-log")(notePath, ctx);
 		const restoredState = restoredMessages.find(({ message }) => message.customType === "md-log-end-lesson-context");
-		assert.ok(restoredState);
+		assert.ok(restoredState, JSON.stringify(notifications));
 		assert.equal(restoredState.options.triggerTurn, false);
 		assert.match(restoredState.message.content, /Resume the unanswered/);
+		assert.match(restoredState.message.content, /do not infer a new quiz from transcript teasers/);
 		assert.ok(fs.readFileSync(notePath, "utf-8").endsWith(`${marker}\n`));
+
+		agentIdle = true;
+		await restoreCommands.get("resume-agent")("", ctx);
+		const continuation = restoredMessages.find(({ message }) => message.customType === "md-log-resume-agent");
+		assert.ok(continuation);
+		assert.match(continuation.message.content, /Resume the unanswered/);
+		assert.match(continuation.message.content, /skills\/teach\/SKILL\.md/);
+		assert.match(continuation.message.content, /linked md-log transcript is already supplied in conversation context/);
+		assert.match(continuation.message.content, /instead of searching for, opening, or shell-reading the note/);
+		assert.doesNotMatch(fs.readFileSync(notePath, "utf-8"), /pi-end-lesson/);
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
 	}

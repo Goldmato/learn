@@ -8,12 +8,14 @@ import {
 	type MasteryRecord,
 } from "./teach-learning-state.ts";
 import {
+	appendMasteryEvidenceRoundAssessment,
 	appendMasteryEvidenceSample,
 	mergeMasteryEvidenceEvents,
 	masteryEvidenceStorePath,
 	readMasteryEvidenceStore,
 	replayMasteryEvidence,
 	type MasteryEvidenceStore,
+	type MasteryEvidenceRoundAssessment,
 	type MasteryEvidenceSample,
 } from "./mastery-evidence.ts";
 import {
@@ -45,6 +47,8 @@ export interface PersistedMasteryEvidence extends MasteryEvidence {
 	outcome: "correct" | "partial" | "incorrect";
 	recordedAt: number;
 }
+
+export type PersistedMasteryRoundAssessment = Omit<MasteryEvidenceRoundAssessment, "kind">;
 
 export function findVaultRootForNote(notePath: string): string {
 	const realNotePath = fs.realpathSync(notePath);
@@ -297,9 +301,8 @@ export function syncMasteryAcrossVault(
 	currentNotePath: string,
 	conceptId: string,
 	options: {
-		previousRecord?: MasteryRecord;
-		nextRecord?: MasteryRecord;
 		evidence?: PersistedMasteryEvidence;
+		roundAssessment?: PersistedMasteryRoundAssessment;
 	} = {},
 ): { record: MasteryRecord; previousRecord?: MasteryRecord; files: string[]; evidenceCount: number } {
 	if (!conceptId.trim()) throw new Error("conceptId must contain non-whitespace text.");
@@ -353,32 +356,42 @@ export function syncMasteryAcrossVault(
 	}
 	const base = hasStoredEvidence ? replayMasteryEvidence(conceptEvents, conceptId) : records[0];
 	let record: MasteryRecord;
-	if (options.evidence) {
-		if (base && options.previousRecord && !sameMasteryRecord(base, options.previousRecord)) {
-			throw new Error(`Mastery history for "${conceptId}" changed before the evidence could be synchronized; no evidence was added.`);
-		}
-		const sample: Omit<MasteryEvidenceSample, "kind"> = {
-			conceptId,
-			interactionId: options.evidence.interactionId,
-			evidenceType: options.evidence.evidenceType ?? "free_response",
-			outcome: options.evidence.outcome ?? "partial",
-			score: options.evidence.score,
-			confidence: options.evidence.confidence,
-			reasoningSummary: options.evidence.reasoningSummary?.trim() || undefined,
-			recordedAt: options.evidence.recordedAt,
+	if (options.evidence && options.roundAssessment) {
+		throw new Error("Provide either an interaction evidence event or a round assessment, not both.");
+	}
+	const eventConceptId = options.evidence?.conceptId ?? options.roundAssessment?.conceptId;
+	if (eventConceptId && eventConceptId !== conceptId) {
+		throw new Error(`Evidence concept "${eventConceptId}" does not match the synchronization concept "${conceptId}".`);
+	}
+	if (options.evidence || options.roundAssessment) {
+		evidenceStore = {
+			version: 1,
+			events: hasStoredEvidence ? evidenceStore.events : [...evidenceStore.events, ...conceptEvents],
 		};
-		evidenceStore = appendMasteryEvidenceSample(
-			{
-				version: 1,
-				events: hasStoredEvidence ? evidenceStore.events : [...evidenceStore.events, ...conceptEvents],
-			},
-			sample,
-		);
+		if (options.evidence) {
+			evidenceStore = appendMasteryEvidenceSample(evidenceStore, {
+				conceptId: options.evidence.conceptId,
+				interactionId: options.evidence.interactionId,
+				evidenceType: options.evidence.evidenceType,
+				outcome: options.evidence.outcome,
+				score: options.evidence.score,
+				confidence: options.evidence.confidence,
+				evidenceWeight: options.evidence.evidenceWeight,
+				reasoningSummary: options.evidence.reasoningSummary?.trim() || undefined,
+				recordedAt: options.evidence.recordedAt,
+			});
+		} else if (options.roundAssessment) {
+			const availableInteractions = new Set(conceptEvents.flatMap((event) =>
+				event.kind === "sample" ? [event.interactionId] : [],
+			));
+			const missingInteraction = options.roundAssessment.interactionIds.find((id) => !availableInteractions.has(id));
+			if (missingInteraction) {
+				throw new Error(`Round assessment references unpersisted interaction "${missingInteraction}" for "${conceptId}".`);
+			}
+			evidenceStore = appendMasteryEvidenceRoundAssessment(evidenceStore, options.roundAssessment);
+		}
 		conceptEvents = evidenceStore.events.filter((event) => event.conceptId === conceptId);
 		record = replayMasteryEvidence(conceptEvents, conceptId)!;
-		if (options.nextRecord && !sameMasteryRecord(record, options.nextRecord)) {
-			throw new Error(`Replayed mastery evidence for "${conceptId}" differs from the session projection; no note was changed.`);
-		}
 	} else {
 		if (!base) throw new Error(`No mastery record exists for "${conceptId}" in the linked notes.`);
 		record = base;
@@ -387,7 +400,7 @@ export function syncMasteryAcrossVault(
 	const targets = matchingNotes.map((note) => note.linkTarget);
 	const staged = documents.map(({ note, markdown }) => {
 		let updated = stripLegacyMasteryEvidence(markdown);
-		updated = updateMasteryFrontmatter(updated, conceptId, record);
+		updated = updateMasteryFrontmatter(updated, conceptId, record, { force: true });
 		const projected = readMasteryFrontmatter(updated).get(conceptId);
 		if (!projected || !sameMasteryRecord(projected, record)) {
 			throw new Error(`Could not safely project replayed mastery for "${conceptId}" to "${note.relativePath}". No note was changed.`);
@@ -396,7 +409,7 @@ export function syncMasteryAcrossVault(
 		return { filePath: note.filePath, updated, original: markdown };
 	});
 	const filesToCommit = [
-		...(options.evidence || (!hasStoredEvidence && conceptEvents.length > 0)
+		...(options.evidence || options.roundAssessment || (!hasStoredEvidence && conceptEvents.length > 0)
 			? [{ filePath: evidenceStorePath, contents: `${JSON.stringify(evidenceStore, null, "\t")}\n` }]
 			: []),
 		...staged

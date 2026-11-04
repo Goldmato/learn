@@ -160,6 +160,10 @@ test("quiz rounds have H1/H2 headings and style correct and wrong choices inline
 	assert.match(markdown, /2\. ~~==🔴 Selected misconception==~~/);
 	assert.doesNotMatch(markdown, /Your answer:|Correct answer:/);
 	assert.equal((markdown.match(/Why the answer is right\./g) || []).length, 2);
+	assert.match(markdown, /^> \[!note\]- Question details\n>\n> > \[!note\] Explanation and assessment context/m);
+	assert.ok(markdown.indexOf("Why the answer is right.") > markdown.indexOf("> [!note]- Question details"));
+	assert.doesNotMatch(markdown, /<details>|<summary>/);
+	assert.match(markdown, /> \[!question\] Question/);
 });
 
 test("user and assistant prose bodies stay inside their quote callouts", () => {
@@ -235,7 +239,7 @@ test("I don't know highlights the key without treating an unselected answer as a
 	})]);
 	assert.match(markdown, /1\. ==🟢 Correct option==/);
 	assert.doesNotMatch(markdown, /~~==🔴/);
-	assert.match(markdown, /Quiz — I don't know/);
+	assert.match(markdown, /Result — I don't know/);
 });
 
 test("non-graded question and answer round is contained by an H2", () => {
@@ -284,7 +288,7 @@ test("generated headings normalize separators, capitalization, and concept IDs",
 	]);
 	assert.match(markdown, /^# Quiz: Bird Digestive Tract Order$/m);
 	assert.match(markdown, /^## Round 1: Bird Digestive Tract Order$/m);
-	assert.match(markdown, /^## Attempt: DNA Replication Basics$/m);
+	assert.match(markdown, /> \[!note\]- Assessment details\n>\n> ## Assessment: DNA Replication Basics/);
 	assert.match(markdown, /^# Course Notes: Apply the Method$/m);
 });
 
@@ -430,8 +434,8 @@ test("malformed quiz result metadata is not presented as an incorrect answer", (
 		options: [{ index: 1, label: "Option" }],
 		details: { answers: [{ index: 1, label: "Option" }] },
 	}]);
-	assert.match(markdown, /Quiz — feedback unavailable/);
-	assert.doesNotMatch(markdown, /Quiz — incorrect/);
+	assert.match(markdown, /Result — feedback unavailable/);
+	assert.doesNotMatch(markdown, /Result — incorrect/);
 	assert.doesNotMatch(markdown, /==🟢|~~==🔴/);
 });
 
@@ -475,6 +479,7 @@ test("teaching interaction backfill renders the response and recorded attempt", 
 			summaryTitle: "Writing A Clear Reply",
 			response: "I would reply plainly.\n\nI chose not to manage their reaction.",
 			conceptId: "clear-boundaries",
+			responseTimeMs: 12_500,
 		} },
 		{ id: "attempt", parentId: "response", type: "custom", customType: "teach-attempt", data: {
 			callId: "attempt-call",
@@ -482,6 +487,9 @@ test("teaching interaction backfill renders the response and recorded attempt", 
 			conceptId: "clear-boundaries",
 			outcome: "partial",
 			explanation: "The reply is clear; explain why the boundary is yours to set.",
+			evidenceType: "free_response",
+			evidenceScore: 5,
+			evidenceWeight: 0.9,
 			previousMastery: 5,
 			masteryState: {
 				score: 5.2,
@@ -496,12 +504,72 @@ test("teaching interaction backfill renders the response and recorded attempt", 
 	const markdown = renderTranscript(result.blocks);
 
 	assert.match(markdown, /^## Writing a Clear Reply$/m);
-	assert.match(markdown, /> \[!question\] Prompt\n> Write the reply, then briefly explain your choices\./);
-	assert.match(markdown, /> \[!idea\] Learner's response\n> I would reply plainly\./);
+	assert.match(markdown, /> \[!question\] Question\n> Write the reply, then briefly explain your choices\./);
+	assert.match(markdown, /> \[!example\] Answer\n> I would reply plainly\./);
 	assert.match(markdown, /\n>\n> I chose not to manage their reaction\./);
-	assert.match(markdown, /^## Attempt: Clear Boundaries$/m);
+	assert.match(markdown, /> \[!note\]- Question details[\s\S]*Response time: 13 seconds/);
+	assert.match(markdown, /> \[!note\]- Assessment details\n>\n> ## Assessment: Clear Boundaries/);
 	assert.match(markdown, /> \[!warning\] Evaluation — Partially correct/);
 	assert.match(markdown, /Mastery: ==🟣 5\.00 → 5\.20 \/ 10==/);
+	assert.match(markdown, /Evidence score: 5\.0 \/ 10/);
+	assert.ok(markdown.indexOf("Evidence score: 5.0") > markdown.indexOf("> [!note]- Assessment details"));
+	assert.doesNotMatch(markdown, /<details>|<summary>/);
+});
+
+test("learning interview backfill preserves goal answers as collapsed non-mastery context", () => {
+	const result = buildBackfill([
+		{ id: "root", type: "session" },
+		{ id: "interview", parentId: "root", type: "custom", customType: "teach-learning-interview", data: {
+			callId: "interview-call",
+			interviewId: "teach-interview-123",
+			purpose: "session-intake",
+			summaryTitle: "Clarifying Learning Goals",
+			questions: [
+				{ question: "What sparked your interest?", answer: "I want to understand the underlying mechanism." },
+				{ question: "Which aspect matters most?", answer: "How the pieces fit together." },
+				{ question: "What would you like to be able to do?", answer: "Explain it from first principles." },
+			],
+			responseTimeMs: 14_000,
+		} },
+	]);
+	const markdown = renderTranscript(result.blocks);
+
+	assert.deepEqual(result.diagnostics, []);
+	assert.match(markdown, /^## Clarifying Learning Goals$/m);
+	assert.match(markdown, /^> \[!note\]- Learning goals and interview answers\n>\n> > \[!note\] New-session learning goals/m);
+	assert.match(markdown, /> \[!note\] New-session learning goals/);
+	assert.match(markdown, /> > \[!question\] Focus 1\n> > What sparked your interest\?/);
+	assert.match(markdown, /> > \[!example\] Learner's answer\n> > I want to understand the underlying mechanism\./);
+	assert.match(markdown, /Response time: 14 seconds/);
+	assert.doesNotMatch(markdown, /Assessment details|Evidence score|Mastery:/);
+	assert.doesNotMatch(markdown, /<details>|<summary>/);
+});
+
+test("hidden mastery attempts remain in session backfill without adding per-answer md-log callouts", () => {
+	const result = buildBackfill([
+		{ id: "root", type: "session" },
+		{ id: "response", parentId: "root", type: "custom", customType: "teach-free-response", data: {
+			callId: "free-call",
+			interactionId: "teach-free-123",
+			question: "Explain the concept.",
+			response: "The learner's answer.",
+			conceptId: "core-idea",
+		} },
+		{ id: "attempt", parentId: "response", type: "custom", customType: "teach-attempt", data: {
+			callId: "attempt-call",
+			interactionId: "teach-free-123",
+			conceptId: "core-idea",
+			outcome: "correct",
+			explanation: "The response identifies the core relationship.",
+			includeInMdLog: false,
+			masteryState: { score: 8, evidenceCount: 1, evidenceWeight: 0.9, confidence: 5 },
+		} },
+	]);
+	const markdown = renderTranscript(result.blocks);
+
+	assert.equal(result.blocks.some((block) => block.kind === "attempt"), true);
+	assert.match(markdown, /The learner's answer\./);
+	assert.doesNotMatch(markdown, /Attempt: Core Idea|Evaluation —|core relationship/);
 });
 
 test("backfill diagnoses malformed and unknown session entry shapes without throwing", () => {

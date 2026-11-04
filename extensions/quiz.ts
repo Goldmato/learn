@@ -2,7 +2,6 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import {
 	Editor,
-	type EditorTheme,
 	Key,
 	Text,
 	type OverlayHandle,
@@ -14,6 +13,12 @@ import { Type } from "@sinclair/typebox";
 import { clearAnswerModal, suspendAnswerModal, trackAnswerModal } from "../lib/answer-modal.ts";
 import { appendQuizScratchpad, extractQuizScratchpad } from "../lib/md-log-format.ts";
 import { normalizeQuizOptions, shuffleQuizOptions, type QuizOption } from "../lib/quiz-options.ts";
+import {
+	addQuestionModalWrappedLine as addWrapped,
+	createQuestionEditorTheme as createEditorTheme,
+	pushQuestionModalFooter,
+	pushQuestionModalHeader,
+} from "../lib/question-modal-ui.ts";
 
 // ────────────────────────────────────────────────────────────────────────────
 // quiz — a GRADED sibling of ask_user_question.
@@ -105,7 +110,7 @@ const QuizParams = Type.Object({
 	),
 	options: Type.Array(OptionSchema, {
 		description:
-			"The answer options (4 to 8; aim for 6 by default). Use another count only when better suited to the question, without adding filler. Options only — there is no free-text mode. Give each option a stable `value`; you reference the correct one by that value in correctAnswer.",
+			"The answer options (4 to 8). Choose the smallest count that provides genuinely useful, parallel distractors; never target a fixed count or add filler. Options only — there is no free-text mode. Give each option a stable `value`; you reference the correct one by that value in correctAnswer.",
 		minItems: 4,
 		maxItems: 8,
 	}),
@@ -164,26 +169,6 @@ function resolveCorrect(
 		indices.push(idx);
 	}
 	return { indices: Array.from(new Set(indices)).sort((a, b) => a - b) };
-}
-
-function createEditorTheme(theme: any): EditorTheme {
-	return {
-		borderColor: (s) => theme.fg("accent", s),
-		selectList: {
-			selectedPrefix: (t) => theme.fg("accent", t),
-			selectedText: (t) => theme.fg("accent", t),
-			description: (t) => theme.fg("muted", t),
-			scrollInfo: (t) => theme.fg("dim", t),
-			noMatch: (t) => theme.fg("warning", t),
-		},
-	};
-}
-
-function addWrapped(lines: string[], text: string, width: number, indent = ""): void {
-	const contentWidth = Math.max(1, width - indent.length);
-	for (const line of wrapTextWithAnsi(text, contentWidth)) {
-		lines.push(truncateToWidth(`${indent}${line}`, width));
-	}
 }
 
 function addWrappedWithPrefix(lines: string[], text: string, width: number, prefix: string, prefixWidth: number): void {
@@ -407,16 +392,6 @@ function renderFeedback(
 	add(theme.fg("dim", " Enter/Esc to continue"));
 }
 
-// Top border + question + optional context. Shared by both components.
-function pushHeader(lines: string[], theme: any, width: number, question: string, context: string | undefined): void {
-	lines.push(truncateToWidth(theme.fg("accent", "─".repeat(width)), width));
-	addWrapped(lines, theme.fg("text", question), width, " ");
-	if (context) {
-		lines.push("");
-		addWrapped(lines, theme.fg("muted", context), width, " ");
-	}
-}
-
 // The "I don't know" row in the selection list — visually separated and dimmed
 // so it reads as distinct from the real, gradable options.
 function pushDontKnowRow(lines: string[], theme: any, width: number, focused: boolean): void {
@@ -600,7 +575,7 @@ async function askSingleChoice(
 
 				const lines: string[] = [];
 				const add = (text: string) => lines.push(truncateToWidth(text, width));
-				pushHeader(lines, theme, width, question, context);
+				pushQuestionModalHeader(lines, theme, width, question, context);
 
 				if (phase === "feedback") {
 					renderFeedback(
@@ -614,8 +589,7 @@ async function askSingleChoice(
 						dontKnow,
 						noteText(),
 					);
-					add(theme.fg("dim", " F6 pause • press again for Interlude • /answer-resume return"));
-					add(theme.fg("accent", "─".repeat(width)));
+					pushQuestionModalFooter(lines, theme, width, "F6 pause • press again for Interlude • /answer-resume return");
 					cachedLines = lines;
 					cachedWidth = width;
 					return lines;
@@ -638,13 +612,11 @@ async function askSingleChoice(
 
 				pushNoteField(lines, theme, width, editor, focus === "note");
 
-				lines.push("");
 				if (focus === "note") {
-					add(theme.fg("dim", " Type note • Ctrl+J newline • Enter back to options • Tab options • Esc back"));
+					pushQuestionModalFooter(lines, theme, width, "Type note • Ctrl+J newline • Enter back to options • Tab options • Esc back");
 				} else {
-					add(theme.fg("dim", " ↑↓ navigate • Enter answer • type note/Tab • F6 pause • Esc cancel"));
+					pushQuestionModalFooter(lines, theme, width, "↑↓ navigate • Enter answer • type note/Tab • F6 pause • Esc cancel");
 				}
-				add(theme.fg("accent", "─".repeat(width)));
 				// Not cached when the note is focused: the editor renders a live cursor.
 				if (focus !== "note") {
 					cachedLines = lines;
@@ -864,7 +836,7 @@ async function askMultiChoice(
 
 				const lines: string[] = [];
 				const add = (text: string) => lines.push(truncateToWidth(text, width));
-				pushHeader(lines, theme, width, question, context);
+				pushQuestionModalHeader(lines, theme, width, question, context);
 
 				if (phase === "feedback") {
 					renderFeedback(
@@ -878,8 +850,7 @@ async function askMultiChoice(
 						choseDontKnow(),
 						noteText(),
 					);
-					add(theme.fg("dim", " F6 pause • press again for Interlude • /answer-resume return"));
-					add(theme.fg("accent", "─".repeat(width)));
+					pushQuestionModalFooter(lines, theme, width, "F6 pause • press again for Interlude • /answer-resume return");
 					cachedLines = lines;
 					cachedWidth = width;
 					return lines;
@@ -921,16 +892,14 @@ async function askMultiChoice(
 
 				pushNoteField(lines, theme, width, editor, focus === "note");
 
-				lines.push("");
 				if (selected.size === 0) {
 					add(theme.fg("warning", " Select at least one answer before submitting."));
 				}
 				if (focus === "note") {
-					add(theme.fg("dim", " Type note • Ctrl+J newline • Enter back to options • Tab options • Esc back"));
+					pushQuestionModalFooter(lines, theme, width, "Type note • Ctrl+J newline • Enter back to options • Tab options • Esc back");
 				} else {
-					add(theme.fg("dim", " ↑↓ navigate • Space toggle • Enter submit • type note/Tab • F6 pause • Esc cancel"));
+					pushQuestionModalFooter(lines, theme, width, "↑↓ navigate • Space toggle • Enter submit • type note/Tab • F6 pause • Esc cancel");
 				}
-				add(theme.fg("accent", "─".repeat(width)));
 				// Not cached when the note is focused: the editor renders a live cursor.
 				if (focus !== "note") {
 					cachedLines = lines;
@@ -1013,8 +982,13 @@ export default function quiz(pi: ExtensionAPI) {
 			"Guardrail: every distractor must be unambiguously wrong on the intended reading — tempting, but a real error, not a defensible alternative. Don't drift into trick questions.",
 			"Anti-guessing hygiene: don't let the correct answer stand out by form (longest, most precise, most hedged, or the only one in the right format). Keep options similar in length, specificity, and phrasing so it can't be picked from shape alone.",
 			"Set multiSelect: true only when more than one option is correct.",
-			"Use 6 real answer options by default. Choose 4–8 only when the question's complexity and useful distractors make a different count clearly better; never pad with filler. The tool automatically randomizes option order before display, so use stable values and never depend on positions.",
-			"To probe nuance, ask several quick quiz questions and adapt each one based on the previous answers, rather than writing one giant question.",
+			"Choose 4–8 real answer options based on question complexity and the number of genuinely useful, parallel distractors. Prefer the smallest set that distinguishes the important misconceptions; never target a fixed count or pad with filler. The tool automatically randomizes option order before display, so use stable values and never depend on positions.",
+			"Do not make every item the same 'what does this word mean in this sentence?' recognition format. Before a practice sequence, identify the skill being assessed and vary the task when useful: contextual inference, close-meaning contrast, clause/relationship interpretation, sentence repair, transfer to a new context, or a constructed explanation. Use free response when options would cue the answer or when production/translation itself is the target.",
+			"Make distractors plausible competitors, not unrelated wrong facts. Use the learner's observed confusions and near-neighbor concepts where available; vary the dimension being tested and keep every option parallel in grammar, specificity, length, and register. If a target answer remains obvious without understanding, rebuild the options or choose a different assessment format.",
+			"A correct selected option is evidence only for that narrowly tested recognition decision. If the learner's scratchpad or translation reveals a separate misunderstanding, preserve it as an open gap and probe that subskill later; do not let an easy correct selection stand in for broad comprehension.",
+			"At the start of a multi-item round, plan a small but meaningful mix of assessment formats and cognitive demands from the learner's goals/evidence; adapt later items to errors and uncertainty instead of repeating one template. Do not vary formats mechanically when one focused retrieval sequence is more useful.",
+			"After feedback, make an explicit modality decision. For language learning, consider reading, listening, and production separately: if the learner requested listening or chose a mixed language-practice round, include at least one useful spoken-language activity with Breeze rather than silently treating all practice as reading. For a partially understood spoken-language target or demonstrated listening gap, prepare a short, target-language audio replay before the next relevant probe. Keep the written transcript/translation concealed until the learner has attempted listening; if the available placement cannot preserve that separation, use audio only as post-answer reinforcement and do not call it a listening assessment. Generate only useful media, not one asset per question.",
+			"After feedback, consider whether ComfyUI imagery would materially clarify a structure or relationship. Generate only useful visuals, not one image per question; never let media reveal the answer before submission.",
 			"Don't leak the answer through formatting: keep option phrasing/length even and don't hint which is correct.",
 			"For explanations and tutoring prose, use Obsidian 1.14+ color highlights sparingly and consistently: ==🟢...== for correct answers/key takeaways, ==🔴...== for misconceptions/incorrect claims, ==🟡...== for cautions or important caveats, ==🔵...== for definitions/context, ==🟣...== for relationships/connections, and ==🟠...== for actions/next steps. Highlight only the shortest useful phrase or sentence; never mark an option before the user answers.",
 		],

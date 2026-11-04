@@ -65,23 +65,24 @@ test("teaching history restores completed responses, one-time attempts, and late
 	assert.equal(history.responses.get("response-1").response, "A complete response.");
 	assert.ok(history.recordedInteractionIds.has("response-1"));
 	assert.ok(history.recordedInteractionIds.has("response-2"));
+	assert.equal(history.recordedConceptIds.get("response-1"), "core-idea");
 	assert.equal(history.mastery.get("core-idea").score, 0.28);
 	assert.equal(history.responses.size, 2);
 });
 
-test("teaching mastery waits for three samples, then caps each update at 25% of the remaining gap", () => {
+test("teaching mastery scores from the first sample using a confidence-weighted average", () => {
 	assert.equal(masteryEvidenceWeight(0), 0.8);
 	assert.equal(masteryEvidenceWeight(5), 0.9);
 	assert.equal(masteryEvidenceWeight(10), 1);
 	const first = updateTeachingMastery(undefined, { interactionId: "first", score: 0, confidence: 5 });
 	const second = updateTeachingMastery(first, { interactionId: "second", score: 10, confidence: 5 });
-	assert.equal(first.score, undefined);
-	assert.equal(second.score, undefined);
+	assert.equal(first.score, 0);
+	assert.equal(second.score, 5);
 	assert.equal(second.evidenceCount, 2);
 	const initialized = updateTeachingMastery(second, { interactionId: "third", score: 10, confidence: 5 });
 	assert.equal(initialized.score, 6.67);
 	assert.equal(initialized.evidenceCount, 3);
-	assert.equal(initialized.evidenceWeight, 3);
+	assert.equal(initialized.evidenceWeight, 2.7);
 	assert.throws(
 		() => updateTeachingMastery(initialized, { interactionId: "third", score: 10, confidence: 5 }),
 		/already the latest mastery sample/,
@@ -94,7 +95,7 @@ test("teaching mastery waits for three samples, then caps each update at 25% of 
 		confidence: 5,
 	}, { interactionId: "fourth", score: 10, confidence: 10 });
 	assert.equal(updated.score, 4);
-	assert.equal(Math.abs(updated.score - 2), (10 - 2) * 0.25);
+	assert.equal(Math.abs(updated.score - 2), 2);
 	const nearTen = updateTeachingMastery({
 		score: 9.99,
 		evidenceCount: 3,
@@ -102,7 +103,7 @@ test("teaching mastery waits for three samples, then caps each update at 25% of 
 		confidence: 5,
 	}, { interactionId: "bounded", score: 0, confidence: 10 });
 	assert.ok(nearTen.score <= 10);
-	assert.ok(Math.abs(nearTen.score - 9.99) <= 9.99 * 0.25);
+	assert.equal(nearTen.score, 7.49);
 	assert.throws(() => updateTeachingMastery(undefined, { interactionId: "invalid", score: 11, confidence: 5 }), /score must be/);
 	assert.throws(() => updateTeachingMastery(undefined, { interactionId: "invalid", score: 5, confidence: 11 }), /confidence must be/);
 });
@@ -174,7 +175,7 @@ test("quiz results become mastery responses with their scratchpad and concept", 
 	assert.equal(quiz.scratchpad, "I was unsure whether B fit.");
 });
 
-test("quiz interaction IDs resolve a unique Pi call prefix and reject ambiguous prefixes", () => {
+test("quiz interaction IDs require an exact full Pi call ID", () => {
 	const interactionId = "call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_07943d684e8d4e80016ae83621328887d1a7c8e7cdcad48dff";
 	const first = {
 		callId: interactionId,
@@ -186,7 +187,7 @@ test("quiz interaction IDs resolve a unique Pi call prefix and reject ambiguous 
 	const responses = new Map([[interactionId, first]]);
 
 	assert.equal(resolveTeachingResponse(responses, interactionId), first);
-	assert.equal(resolveTeachingResponse(responses, "call_mAlMvW6WvkPpYwOEi2PiUrZR"), first);
+	assert.equal(resolveTeachingResponse(responses, "call_mAlMvW6WvkPpYwOEi2PiUrZR"), undefined);
 	assert.equal(resolveTeachingResponse(responses, "unrelated"), undefined);
 
 	responses.set("call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_another", {
@@ -194,10 +195,7 @@ test("quiz interaction IDs resolve a unique Pi call prefix and reject ambiguous 
 		callId: "call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_another",
 		interactionId: "call_mAlMvW6WvkPpYwOEi2PiUrZR|fc_another",
 	});
-	assert.throws(
-		() => resolveTeachingResponse(responses, "call_mAlMvW6WvkPpYwOEi2PiUrZR"),
-		/matches multiple quiz responses/,
-	);
+	assert.equal(resolveTeachingResponse(responses, "call_mAlMvW6WvkPpYwOEi2PiUrZR"), undefined);
 });
 
 test("mastery frontmatter updates only its field and round-trips quoted keys and reasoning", () => {

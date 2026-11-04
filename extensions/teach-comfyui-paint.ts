@@ -123,6 +123,7 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 		promptSnippet: "Request a supporting image with a simple visual prompt",
 		promptGuidelines: [
 			"Use this tool for every ComfyUI image request; do not launch comfyui-image-maker directly with Agent.",
+			"Generate an image only when it materially helps explain or contextualize the current learning point; after an assessment, do not generate one mechanically or before it could reveal the answer.",
 			"Provide a plain-language visual request, a concise human-readable captionTitle naming the image's subject, a brief caption explaining what the image shows and represents, and an exact, unique sentence or paragraph from the managed linked-note transcript as insertAfter. Choose the most contextually appropriate location; do not use image bytes to make these choices.",
 		],
 		parameters: Type.Object({
