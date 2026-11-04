@@ -6,6 +6,7 @@ import {
 	applyPlacements,
 	extractQuizScratchpad,
 	extractManagedTranscript,
+	hasRecentTranscriptBlock,
 	isNonSubstantiveAssistantUpdate,
 	placeManagedSectionAtTop,
 	renderAudioTranscriptCallout,
@@ -45,6 +46,32 @@ function blocksFromTranscript(markdown) {
 function renderPlacements(transcript, entries, notePath, durableMarkdown = "") {
 	return renderTranscript(applyPlacements(blocksFromTranscript(transcript), entries, notePath, durableMarkdown));
 }
+
+test("recent transcript duplicate detection is exact and bounded to the latest 20 blocks", () => {
+	const duplicate = { kind: "prose", role: "user", text: "Repeat this request." };
+	const olderTranscript = renderTranscript([
+		duplicate,
+		...Array.from({ length: 20 }, (_, index) => ({
+			kind: "prose",
+			role: "assistant",
+			text: `Intervening response ${index + 1}.`,
+		})),
+	]);
+	const recentTranscript = renderTranscript([
+		duplicate,
+		...Array.from({ length: 19 }, (_, index) => ({
+			kind: "prose",
+			role: "assistant",
+			text: `Intervening response ${index + 1}.`,
+		})),
+	]);
+	const note = (transcript) => `${TRANSCRIPT_START}\n${transcript}\n${TRANSCRIPT_END}`;
+
+	assert.equal(hasRecentTranscriptBlock(note(olderTranscript), "user", duplicate.text), false);
+	assert.equal(hasRecentTranscriptBlock(note(recentTranscript), "user", duplicate.text), true);
+	assert.equal(hasRecentTranscriptBlock(note(recentTranscript), "assistant", duplicate.text), false);
+	assert.equal(hasRecentTranscriptBlock(note(recentTranscript), "user", "Repeat this request exactly."), false);
+});
 
 test("stable image placement stays with its repeated anchor through transcript refresh", () => {
 	const notePath = "C:\\vault\\lesson.md";

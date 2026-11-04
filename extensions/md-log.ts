@@ -14,6 +14,7 @@ import {
 	renderTranscriptWithPlacements,
 	replaceManagedTranscript,
 	renderTranscript,
+	hasRecentTranscriptBlock,
 	isNonSubstantiveAssistantUpdate,
 	stripSkillBlocks,
 	TRANSCRIPT_END,
@@ -131,6 +132,20 @@ export default function mdLog(pi: ExtensionAPI) {
 	function syncTranscript(ctx: any): Promise<void> {
 		return withLock(() => {
 			try {
+				writeTranscript(ctx);
+			} catch (error) {
+				notifyWriteFailure(ctx, error);
+			}
+		});
+	}
+
+	function appendProseBlock(role: "user" | "assistant", text: string, ctx: any): Promise<void> {
+		return withLock(() => {
+			if (!logFile) return;
+			try {
+				const existing = fs.readFileSync(logFile, "utf-8");
+				if (hasRecentTranscriptBlock(existing, role, text)) return;
+				transcriptBlocks.push({ kind: "prose", role, text });
 				writeTranscript(ctx);
 			} catch (error) {
 				notifyWriteFailure(ctx, error);
@@ -578,8 +593,7 @@ export default function mdLog(pi: ExtensionAPI) {
 						: "").trim(),
 			);
 			if (text) {
-				transcriptBlocks.push({ kind: "prose", role: "user", text });
-				await syncTranscript(ctx);
+				await appendProseBlock("user", text, ctx);
 			}
 		} else if (message.role === "assistant" && Array.isArray(message.content)) {
 			const text = message.content
@@ -588,8 +602,7 @@ export default function mdLog(pi: ExtensionAPI) {
 				.filter(Boolean)
 				.join("\n\n");
 			if (text && !isNonSubstantiveAssistantUpdate(text)) {
-				transcriptBlocks.push({ kind: "prose", role: "assistant", text });
-				await syncTranscript(ctx);
+				await appendProseBlock("assistant", text, ctx);
 			}
 		}
 	});

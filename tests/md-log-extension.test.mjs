@@ -454,6 +454,15 @@ test("extension links a note, updates live quiz rounds, and preserves note conte
 		};
 
 		await commands.get("md-log")(notePath, ctx);
+		const repeatedRequest = "Please explain how the wing pattern forms.";
+		for (let attempt = 0; attempt < 2; attempt++) {
+			await handlers.get("message_end")({
+				message: { role: "user", content: repeatedRequest },
+			}, ctx);
+		}
+		const afterRepeatedRequest = fs.readFileSync(notePath, "utf-8");
+		assert.equal((afterRepeatedRequest.match(/Please explain how the wing pattern forms\./g) || []).length, 1);
+
 		await handlers.get("message_end")({
 			message: {
 				role: "assistant",

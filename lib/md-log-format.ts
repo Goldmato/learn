@@ -311,6 +311,26 @@ export function assistantBlock(text: string): string {
 	return `> [!abstract] PI\n\n${quotedText}`;
 }
 
+const RECENT_TRANSCRIPT_BLOCK_LIMIT = 20;
+
+export function hasRecentTranscriptBlock(markdown: string, role: "user" | "assistant", text: string): boolean {
+	const transcript = extractManagedTranscript(markdown)?.replace(/\r\n/g, "\n");
+	if (!transcript) return false;
+
+	const block = role === "user" ? userBlock(text) : assistantBlock(text);
+	const matchingRole = role === "user" ? "YOU" : "PI";
+	const recentBlocks = [...transcript.matchAll(/^> \[!(?:quote|abstract)\] (YOU|PI)$/gm)]
+		.slice(-RECENT_TRANSCRIPT_BLOCK_LIMIT);
+
+	return recentBlocks.some((match) => {
+		if (match[1] !== matchingRole) return false;
+		const start = match.index!;
+		const end = start + block.length;
+		return transcript.startsWith(block, start)
+			&& (end === transcript.length || transcript[end] === "\n");
+	});
+}
+
 export function isNonSubstantiveAssistantUpdate(text: string): boolean {
 	const sentences = text.trim().split(/(?<=[.!?])\s+/).filter(Boolean);
 	if (sentences.length === 0) return true;
