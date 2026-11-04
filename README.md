@@ -1,5 +1,5 @@
 # learn
-Fork of [amosblomqvist/learn](https://github.com/amosblomqvist/learn) with Termy support for linking the active Obsidian note through `/md-log`.
+Fork of [amosblomqvist/learn](https://github.com/amosblomqvist/learn) with Termy support for linking the active Obsidian note through `/md-log` as well as a suite of other personal feature additions slop-coded by GPT 6 Luna over several weeks mostly via VSCopilot. Contact me if you want to run this project on your local computer and run into issues of compatibility, or create a PR if you're a gigachad. The current iteration likely has a multitude of untested issues/bugs.
 
 Currently only compatible with the Termy Obsidian terminal plugin. Future compatibility is not planned.
 
