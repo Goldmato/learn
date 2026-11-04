@@ -331,9 +331,13 @@ test("Breeze wrapper uses audio.cpp clone task", () => {
 	const wrapper = fs.readFileSync(new URL("../scripts/breeze-tts.cmd", import.meta.url), "utf-8");
 	const powershell = fs.readFileSync(new URL("../scripts/breeze-tts.ps1", import.meta.url), "utf-8");
 	assert.match(wrapper, /breeze-tts\.ps1/);
+	assert.match(wrapper, /pwsh\.exe/i);
+	assert.doesNotMatch(wrapper, /powershell\.exe/i);
 	assert.match(powershell, /local-paths\.json/);
 	assert.match(powershell, /audioCppRoot/);
 	assert.match(powershell, /cudaRootDirectory/);
+	assert.match(powershell, /function Resolve-ConfiguredPath/);
+	assert.doesNotMatch(powershell, /GetFullPath\([^)]*,/);
 	assert.match(powershell, /--task \$env:BREEZE_TTS_TASK --family breeze_tts/);
 });
 
