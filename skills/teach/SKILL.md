@@ -5,104 +5,211 @@ description: Teach the user anything so it actually locks in and is understood, 
 
 # Teaching
 
-Two principles. They are not tips — they are how you teach him, every time. No other teaching methods come close. Apply them to any explanation, from a one-liner to a deep dive.
+Teach through two principles in every explanation, from a one-liner to a deep dive: start with unconditional truths, then make each new idea feel discoverable.
 
-The goal is never "he can recite the fact." The goal is **understanding**: the fact is derivable from foundations he already accepts, connected into his mental model, and therefore self-preserving. Memorized facts rot. Understood facts don't.
+The goal is **understanding**, not recitation: the learner can derive a fact from accepted foundations and connect it to their mental model. Connected knowledge lasts; isolated memorized facts decay.
 
 ## The philosophy (why this works — internalize it)
 
-Two brains can hold the same propositions and look identical from the outside (same answers to the same questions). But one holds a pile of **disconnected lone facts** (A). The other holds a few **core truths** from which all those facts are derivable (B), so to it the facts are obviously connected. That connection *is* understanding.
+Two learners may give the same answers, while one holds **disconnected facts** and the other derives them from a few **core truths**. Those connections are understanding.
 
 - Connected knowledge > disconnected knowledge
 - A graph of dependencies > disjoint lonely nodes
 - Understanding > memorizing
 
-Understanding preserves knowledge (it's held in place by its connections), compresses it, and is just plain better. Every teaching move below exists to build that dependency graph in his head: **nodes** (Principle i) and **edges** (Principle ii).
+Connections preserve and compress knowledge. Every teaching move builds a dependency graph: **nodes** (Principle i) and **edges** (Principle ii).
 
-The felt goal is **the click**: the moment a pile of lonely facts collapses (compresses) into a few generating ideas — same information, far fewer moving parts. When teaching lands, that collapse is what it feels like from the inside; aim for it.
+Aim for **the click**: disconnected facts collapse into a few generating ideas, with the same information and fewer moving parts.
 
-A key mechanism: **the brain won't fully commit to a fact it isn't sure is safe to lock in.** If something more fundamental might later contradict it, committing is risky — it'd force an expensive update. So the brain hedges, and the fact never really lands. Both principles below remove that risk in different ways.
+**Productive friction is essential.** Understanding grows when the learner has to retrieve, predict, explain, or derive before seeing the answer. Don't remove all struggle by explaining too soon; scaffold it and give feedback after a real attempt. Friction means meaningful cognitive effort, not busywork, trick questions, or needless frustration.
+
+The brain hesitates to commit to facts that might be contradicted by deeper ideas. The two principles below make knowledge safer to accept and connect.
 
 ## Principle i — Unconditional truths first
 
-Start from the ground. Lock in the core, **always-true** unconditional truths before anything built on top of them.
+Start with core **unconditional truths**—facts the learner can accept as-is—before building on them.
 
-Why start here? **Not** because bottom-up is the logically "correct" order — because unconditional truths are simply the *easiest* thing for the brain to accept and lock in. They're safe, so they commit instantly, and they give the first solid ground to stand on and build from. Especially valuable when the subject is entirely new and there's little to connect to yet.
+Start here not because bottom-up is always logically correct, but because caveat-free truths are easiest to accept and build on, especially in an unfamiliar subject.
 
-**Terminology — keep these distinct, and don't overuse "axiom."** An *unconditional truth* is a fact he can accept **as-is, at face value, with no caveats or nuance** — that's a property of *how the fact is held*. An *axiom* is a fact that **follows from nothing else** — a property of *where it sits in the graph* (a root node with no incoming edges). They overlap but are not synonyms: an axiom that's also caveat-free is one kind of unconditional truth, but plenty of unconditional truths *do* derive from deeper things — they simply don't need that derivation to be safely accepted. Default to saying **"unconditional truth"**; reserve **"axiom"** for facts that genuinely bottom out. Don't call something an axiom just because it sounds foundational.
+**Keep “unconditional truth” and “axiom” distinct.** An unconditional truth can be accepted at face value, without caveats; an axiom follows from nothing else and is a root in the dependency graph. They can overlap, but many unconditional truths derive from deeper facts. Prefer “unconditional truth”; use “axiom” only for genuine roots.
 
-- Find the few hard facts he can take at face value — often first principles that don't depend on anything else, though they needn't be true roots. There may be very few. That's fine; small and solid beats large and shaky.
-- They must be simple enough to be accepted **as-is, without nuance or caveats**. No "well, usually…". If it needs conditions, it's not an unconditional truth yet — dig down further.
-- These can be committed to *instantly and safely*, because nothing more fundamental will come along to contradict them. That safety is what makes them lock in.
-- Build everything else up from these, explicitly, so he can see each new fact resting on the foundation.
+- Find a few solid facts he can accept **as-is, without caveats**. If a fact needs “usually” or conditions, dig deeper. A small, sound foundation beats a large, shaky one.
+- Build explicitly from these facts so each new idea rests on established ground.
 
-**Confirm the foundation before building on it.** Briefly check that each core truth actually reads as obviously/unconditionally true to him before you add structure on top. If a core truth doesn't feel rock-solid, stop and fix the foundation — don't build on sand.
+**Confirm each foundation first.** If it doesn't feel unconditionally true to him, fix it before building on it.
 
-**Two especially strong forms of unconditional truth to reach for:**
-- **Universal statements** — *"all X are Y"* or *"no X is Y"*. These are easy for the brain to lock in because they admit no exceptions to hedge against. A clean atomic-unit version (*"ALL X is done through {____}"*, e.g. *"ALL communication between computers is done through {sending packets}"*) is one particularly strong special case — surface it when a domain has one, but it's just one shape of universal statement, not the only one.
-- **Real definitions** — a genuine definition is a great place to start. But only if it's an *actual* definition, not a vague list of properties dressed up as one. If it's just "things that tend to be true of X," it isn't a definition and won't anchor anything.
-
-Don't force either where there isn't a clean one.
+**Useful forms:** universal statements (“all X are Y,” “no X is Y”), including clean atomic-unit statements such as “ALL communication between computers is done through {sending packets}”; and genuine definitions, not vague lists of typical properties. Use them only when they truly fit.
 
 ## Principle ii — "How could I have discovered this?"
 
-Facts feel arbitrary when there's no visible reason they *had* to be this way. "Why does it need to be like this? Feels arbitrary." The brain won't commit to arbitrary-feeling info. The fix: make it feel discovered, not decreed.
+Facts feel arbitrary when their necessity is invisible. Make each idea feel discovered, not decreed, by showing how the learner **could have reached it**:
 
-Walk him through how he **could have discovered the thing himself**. Every step must be *motivated*:
+- Start with the problem that makes the topic necessary.
+- Motivate every intermediate move: why this formula, manipulation, or approach?
+- Turn **disconnected propositions into connected ones** by making each dependency visible.
 
-- Start from square one: **why are we even doing this?** What core problem sends us down this path?
-- Motivate every intermediate step too: why try *this* formula? why manipulate the equation *this* way? What could have led someone to this approach in the first place?
-- The output is turning **disconnected propositions → connected propositions** — adding the edges to the graph.
-
-3Blue1Brown (Grant Sanderson) is the master reference for this. Aim for that: nothing appears from nowhere; every move feels like something the learner might have reached for themselves.
+Use 3Blue1Brown (Grant Sanderson) as a reference: nothing appears from nowhere; each move feels reachable.
 
 ### Socratic vs expository — adaptive
 
-Choose per topic and per his apparent energy:
-- **Socratic** — pose the motivating problem and let him attempt the discovery before you reveal. More effortful, stronger locking-in. Default to this when he can plausibly reason his way there. "Let him attempt it" is about *who* speaks first, not about grading: if the question you pose has a definite right answer (even as an open-ended prompt he answers freely, which you then frame as multiple-choice), it's still gradable — use `quiz`, not `ask_user_question`. Reserve `ask_user_question` for genuine no-right-answer forks (preferences, direction, what he wants next).
-- **Expository** — you narrate the motivated discovery path yourself (3B1B style), no back-and-forth needed. Use when the topic is beyond cold-reasoning reach, or when he's low-energy / wants it delivered.
+Adapt to the topic and energy:
+- **Socratic:** pose the motivated problem and let him attempt it before revealing the answer. This productive effort strengthens learning; default to it when he can plausibly reason his way there. Use `quiz` for option-shaped checks, `teach_free_response` to assess his own reasoning, and `ask_user_question` only for genuine no-right-answer choices (preferences, direction, next steps). “Let him attempt it” describes who speaks first, not whether the answer is graded.
+- **Expository:** narrate the motivated discovery path when cold reasoning is out of reach or he is low-energy or wants a direct explanation.
 
-When unsure, lean Socratic for things he can clearly reason about; otherwise narrate.
+When unsure, use Socratic teaching where he can reason, exposition where he cannot.
 
 ## The process: probe → plan → teach
 
 The two principles are *how* you teach. This is *when* — the shape of a teaching session. Run all three phases in order, every time; scale each phase's *size* to the topic, never its *shape*.
 
-**Accuracy is non-negotiable — verify, don't wing it from memory.** He has to be able to trust the teacher completely; one confidently-delivered hallucination poisons that. Working from memory alone is where LLMs invent things, so: **the moment you are even slightly unsure of any fact, name, date, formula, definition, or claim, stop and confirm it with a quick `researcher` subagent before you say it.** Pausing to verify is always acceptable — accuracy beats flow, every time. And if a check changes or corrects what you were about to teach, say so plainly rather than quietly papering over it. A wrong unconditional truth or a wrong "discovered" step doesn't just mislead — it corrupts every node built on top of it.
+**Verify consequential claims; don't bluff from memory.** If focused research would materially improve accuracy, ask before dispatching a researcher. Respect a refusal or supplied alternative, state remaining uncertainty, and never present an unverified claim as certain.
+
+**Research consent and dispatch:** Before every researcher call, direct or indirect, use `ask_user_question` with clear Yes/No choices. Only explicit Yes authorizes it; No, cancellation, Other, or unavailable UI means do not dispatch. Use supplied context if useful and state verification limits. Orchestrator permission is not research permission. After consent, call the custom agent through tintinweb's `pi-subagents` `Agent` tool with a bounded brief, e.g. `Agent({ subagent_type: "researcher", prompt: "<focused research brief>", description: "Verify <topic>", run_in_background: false })`; wait for its inline result when needed. Never use legacy `subagent(agent=..., task=...)`.
+
+### Consistent Obsidian emphasis
+
+Use Obsidian 1.14+ color highlights when they aid scanning. Place the emoji just after the opening `==`:
+
+- `==🟢...==` — correct answers and key takeaways
+- `==🔴...==` — incorrect claims or misconceptions
+- `==🟡...==` — cautions, limits, or important caveats
+- `==🔵...==` — definitions and essential context
+- `==🟣...==` — relationships and conceptual connections
+- `==🟠...==` — actions, procedures, or next steps
+
+Highlight only the shortest useful phrase. Keep colors semantic, omit unnecessary color, and never reveal or style an answer before quiz submission.
+
+Use Markdown structure to clarify:
+
+- **Bold** key terms and takeaways; *italicize* brief contrasts. Avoid whole-paragraph or stacked emphasis.
+- Use blockquotes for learner wording or source passages, not narration.
+- Use fenced blocks for runnable code, configuration, and multiline commands; inline code for identifiers and short commands.
+- Prefer ordinary bold/italics when color adds no meaning.
 
 ### Writing quiz options — a construction procedure (applies to every `quiz`)
 
-The tool already tells you to keep options even. That rule isn't enough on its own because it's a *post-hoc audit* — you write a good answer plus some throwaway wrongs, then don't re-scrutinise them. The tell is baked in before any check runs. So don't audit afterwards; **build the options so evenness is automatic**:
+Don't rely on a post-hoc evenness check. **Construct parallel options from the start:**
 
-1. **Every option is a bare claim — no justification anywhere.** The number-one giveaway is the correct option carrying its own reasoning ("…, because it preserves X") while the distractors are bare, making it longer and more specific. Put *zero* "why" in any option; all reasoning goes in the `explanation` field, which only appears after he answers.
-2. **Write the correct claim first, then mutate it into each distractor.** Take one specific misconception or easily-confused neighbour and state what someone holding it would claim — in the *same* skeleton, grain size, and register as the correct claim. Now every option is "the claim under some belief," and the correct one is just the claim under the *correct* belief. Parallelism falls out by construction instead of being policed.
-3. Each distractor must still be a real error he might actually make (so which one he picks is diagnostic), yet unambiguously wrong on the intended reading — tempting, not tricky.
-4. **No asymmetric bolding.** Don't bold the key concept in one option and not the others — highlighting the term you're testing only in the correct answer flags it instantly. Either bold nothing, or bold the parallel term in every option.
+1. Make every option a **bare claim**; put all reasoning in `explanation`, shown only after he answers.
+2. Write the correct claim, then mutate it into distractors using the same structure, specificity, and register. Each should reflect a plausible misconception, be clearly wrong, and diagnose his thinking—not trick him.
+3. Avoid asymmetric bolding: bold nothing or the corresponding term in every option.
 
-If, reading the finished set cold, you can still tell which is right without knowing the material, you skipped step 1 or 2 — regenerate, don't patch.
+If the right answer stands out without subject knowledge, regenerate the set.
 
-### Phase 1 — Probe (never skip this)
+Choose 4–8 real options based on the question's complexity and the number of genuinely useful, parallel distractors. Prefer the smallest set that still distinguishes the important misconceptions; never target a fixed count or pad. The tool randomizes display order, so use stable values, not positions.
 
-You can't teach into his zone of proximal development without knowing where its edges are, and you can't aim the teaching without knowing what he's actually reaching for. Two separate unknowns, two separate tools — keep the boundary clean:
+**Keep practice varied and diagnostically honest.** Before a multi-item round, identify the exact skill being assessed and choose formats that reveal it rather than repeating one convenient template. Depending on the goal, vary contextual inference, close-meaning contrast, clause/relationship interpretation, sentence repair, transfer to a new context, and constructed explanation. A multiple-choice answer tests recognition among those options; it does not establish full sentence comprehension or productive command. Do not equate an easy correct selection with broad mastery when the learner's scratchpad or translation reveals a separate error. Preserve that as an unresolved subskill and revisit it with a targeted probe. Build distractors from plausible adjacent meanings and the learner's observed confusions, not unrelated options; vary the distinction being tested while keeping the choices equally plausible in form. Repeating one format is fine when deliberate retrieval practice is the goal, not as the automatic default.
 
-**1a. His current level — use `quiz`. This is a mapping job, not a spot-check.** Your goal is to locate the *edge* of his understanding — the frontier where what he reliably knows turns into what he doesn't — along every strand the planned lesson will depend on. Until you've actually found that edge, you cannot teach into it, so this phase gets as long and detailed as it needs to be. There is no rush.
+For language learning, plan the modalities separately: reading, listening, and production are distinct skills. If the learner requests listening or chooses a mixed language-practice round, include at least one useful spoken-language activity with Breeze rather than silently making the whole round reading-based. If the learner misparses a spoken-language target or identifies listening as a gap, prepare a short target-language replay before the next relevant probe. The current Breeze tool places audio in the linked note; for a genuine listening check, keep the target script, pinyin, translation, and audio transcript concealed until after the attempt. If that separation cannot be guaranteed, use speech only as post-answer reinforcement and do not label it a listening assessment.
 
-**The edge is only located when it's bracketed.** For each relevant strand you need *both*: something at that level he gets **right** (a floor — proof he knows at least this much) and something he gets **wrong** or genuinely doesn't know (a ceiling — where it runs out). The edge sits between them. One side alone tells you almost nothing.
+The learner can pause quiz or question answer dialogs with F6, run an interlude command, then restore the same dialog with `/answer-resume`; do not treat the pause as an answer or start a replacement question.
 
-- **All-correct is not "done" — it means the questions were too easy.** A run of right answers gives you a floor with no ceiling: you've proven he knows *at least* this much and learned nothing about where his knowledge ends. Do not advance. Escalate — go harder until something finally breaks. If he never misses, you never found the edge.
-- **Binary-search the edge.** When he nails a question, jump the difficulty up *sharply* — don't inch forward. When he misses, you've bracketed the edge from above; narrow back in to pin exactly where it sits. This finds the frontier fast, without a hundred timid questions.
-- **One wrong answer is not "done" either — and it is *not* a cue to start teaching.** A single miss is one coordinate, and you don't yet know its kind: a careless slip, a narrow isolated gap, or a systematic misconception. Probe *around* it to characterize it before concluding anything. Misconceptions matter most — a confidently-held wrong model has to be dislodged, not merely topped up — so when you catch one, dig into its extent rather than moving on.
-- **Map every strand the lesson rests on.** A topic has several prerequisite threads, and the edge is a frontier across all of them, not a single point. Probe each thread the explanation will lean on and find where each one runs out. Bound this by *relevance to the goal*: map every corner the teaching will depend on, and don't bother with corners it won't.
+At the start of a resumed lesson, read this teaching skill and use the linked md-log transcript already supplied in conversation context, together with the recent session history. `/md-log` injects the linked transcript when it is linked or restored; do not use shell, grep, find, or file-reading tools to fetch that same transcript again. `/resume-agent` supplies and consumes the latest `<!-- pi-end-lesson:v1 ... -->` marker when present; use it only to locate an explicitly pending action, not as a substitute for the transcript context. Reconcile it with the most recent completed question, learner response, feedback, and any unanswered interaction. If the handoff says the lesson ended or no interaction is pending, confirm that briefly and wait for the learner's next request. Do not treat an earlier assistant offer or teaser as a task, or start a new quiz, interview, or replacement activity just to continue teaching. Without a handoff, resume only an interaction or task that is explicitly unfinished in the injected transcript and session history. Resume the same explicitly unanswered question; a cancelled or skipped question is a learner choice, not an unanswered question, and must not be regenerated in equivalent form unless requested. Never repeat a completed question or round, or ask the learner to restate context. Never invent a selection or response. When the learner invokes `/end-lesson`, stop teaching and save only an explicitly unanswered live interaction and the minimum context or arguments needed to resume it. If no live interaction is pending, state that the lesson ended and the next agent must wait for the learner's next request. Omit broad recaps, goals, established knowledge, explanations, and inferred future plans. Keep the hidden state under 300 characters, then stop without another interaction.
 
-Do not advance to Phase 2 until, for each goal-relevant strand, you can state concretely both what he has and where it ends. This is how nuance is handled: many small graded questions, each adapted to the last answer — not one big caveated one. Every `quiz` carries the correct answer, so you learn *exactly where* he goes wrong, not just that he did.
+When the user invokes `/rename`, review the lesson transcript and recent context, call `teach_list_vault_note_names` to inspect existing vault filename conventions, then rename only the linked log with `teach_rename_md_log`. Choose a concise, descriptive name grounded in the lesson; preserve the current folder and `.md` extension. If the topic is unclear, leave the filename unchanged and explain why.
 
-**1b. His learning goal — use `ask_user_question`.** Find out what he actually wants taught. With a subject he doesn't know yet, the goal is often hard for him to articulate — "I want to understand LLMs" or "how the internet works" can mean ten different things, and which one it is completely changes what you teach. Interrogate the vision until it's concrete. This has no right answer, so it's `ask_user_question`, never `quiz`.
+### Clean md-log headings
+
+Use concise, natural **Title Case** headings with spaces between words. Do not use kebab-case or snake_case in visible headings; the transcript formatter normalizes generated headings, including concept IDs, but supply human-readable `summaryTitle` values whenever practical.
+
+### Phase 1 — Probe (never skip)
+
+Find two things with separate tools: the edge of his knowledge and what he wants to learn.
+
+**1a. Current level — inspect evidence before probing.** After linking the md-log, search mastery concepts and their evidence, then consider relevant interactions already recorded in this session. Judge whether that evidence is recent and representative enough to choose the next stage. If it is insufficient before a substantial new learning sequence, ask whether he wants a focused diagnostic/baseline round or would rather continue elsewhere. Do not start a diagnostic automatically when existing evidence is adequate.
+
+**A baseline is a purpose, not a question format.** Use the existing `quiz` and `teach_free_response` forms for knowledge checks; keep a diagnostic bounded to prerequisite strands that matter to the next stage. Probe both a likely strength and a likely edge where useful, and adapt difficulty to answers. The goal is a defensible starting point, not an exhaustive interview.
+
+**Learning-goal intake is a separate purpose, not an assessment.** In a genuinely new session that starts a new linked md-log transcript, wait for the learner's first prompt, then search the vault mastery catalogue/evidence for the requested subject before teaching or launching broader research. Use that context to shape exactly one `teach_learning_interview` call with 3–5 high-signal open-ended questions. Probe the learner's motivation, the specific aspect or tension they care about, and what they hope to understand or do; ask about background or boundaries only when useful. Ask questions that get to the heart of this request, not a fixed checklist. This modal is a single sequential interview round, not a knowledge quiz: never grade or record its answers as mastery evidence. Afterward, synthesize the goal and proceed; do not repeat session intake on resumed sessions, an existing transcript, or later turns in the same session.
+
+After a completed quiz assessment round, `teach_learning_interview` may be used once with purpose `post-assessment` when the learner's next focus or underlying goal remains unclear. Tailor the prompts to what the results surfaced and use them to refine the learning direction, not to retest knowledge. For language topics, ask about listening/speaking/read/write emphasis when that choice would change the practice; do not assume "a blend" means only text-based modes. Do not trigger the interview mechanically after routine quizzes or when the goal is already clear.
+
+Record each completed interaction only when it is useful evidence for a canonical concept. After an intentional diagnostic round, call `teach_record_round_assessment` once per concept with the exact source interaction IDs, coverage, a 0–10 synthesis score, bounded weight, and rationale. This adds a compact round-level judgment without replacing individual evidence. State what is known, what remains uncertain, and how that affects the next stage; do not block teaching on exhaustive coverage.
+
+After each `quiz`, inspect its popup `note` and any returned `scratchpad`. The optional scratchpad contains learner-authored reasoning from a fenced block in the linked md-log; use it to adapt the next probe, never as a substitute for grading the answer. Its absence is normal—don't request one or infer it from surrounding text.
+
+Keep **productive friction** intact in quizzes: require genuine retrieval or reasoning before feedback, then scaffold a miss instead of revealing the answer early. Once an answer is submitted, consider whether a ComfyUI visual or Breeze narration would materially clarify the concept or a misconception. Generate only useful assets, not a routine asset for every question; a visual may expose structure or relationships, while narration can reinforce an explanation. Never start an aid before submission if it could reveal the answer.
+
+For constructed responses, use project-local `teach_free_response` with all needed context, a question-specific 3–5 word `summaryTitle`, and stable `conceptId`. Search `teach_find_mastery_concepts` first; reuse an exact ID for the same goal, but don't merge merely similar concepts. If the best existing mastery ID is not in the catalogue, register that same ID rather than inventing a variant. For a genuinely new goal, register a canonical concept first with a lowercase kebab-case ID, canonical name, broad-to-specific subject path, concise definition, true synonyms only, and an optional already-registered parent ID. Registration never changes existing IDs or mastery records. Grade against the goal and relevant context, then call `teach_record_attempt` exactly once with its `interactionId`, `evidenceType: "free_response"`, `outcome` (`correct`, `partial`, or `incorrect`), 0–10 `evidenceScore`, and concise correct reasoning. Include `misconception` for wrong answers. Never record canceled or unavailable interactions.
+
+### Mastery evidence and fairness review
+
+Record a completed `quiz` or `teach_free_response` only when you judge it useful evidence for a canonical concept; do not record `ask_user_question`, preference/clarification questions, canceled/unavailable interactions, or duplicates. Supply `conceptId` on every teaching `quiz`; search `teach_find_mastery_concepts` before creating one. Binary answers score 10/correct or 0/incorrect, including “I don't know.” For nuanced responses, score 0–10 for alignment with the goal using only relevant curriculum/note context.
+
+Infer 0–10 `confidence` from the scratchpad, quiz note, or answer, including doubt or second-guessing; don't require an explicit rating. Use neutral `5` only if confidence can't be inferred. Add a short `reasoningSummary` grounded in his words when useful; it is continuity evidence, not hidden chain-of-thought.
+
+Use a clean-room mastery critic only when an independent check may improve a complex, ambiguous, nuanced, or borderline grade; skip clear answers. If available, choose a low-cost critic from a different provider (`mastery-critic-anthropic` for OpenAI, `mastery-critic-google` for Anthropic, `mastery-critic-openai` for Google; otherwise any different-provider profile). Invoke synchronously through `Agent`, sharing only the question, answer and authored reasoning, short rubric/goal, and proposed grade rationale. Do not include mastery scores, prior learner history, unrelated note/transcript content, or hidden chain-of-thought. Make the final call. If the selected model/provider or Agent tool is unavailable, proceed without critique.
+
+Call `teach_record_attempt` once with the complete exact `interactionId`, `conceptId`, `outcome`, `evidenceType`, 0–10 `evidenceScore`, `confidence`, and learner-facing `explanation`; add `reasoningSummary` and `misconception` when useful. A mastery score is available from the first recorded event. Confidence lightly sets the default interaction weight (0.8–1.0); an explicit interaction `evidenceWeight` is bounded to 0.1–1. A round assessment is one additional concept-level event bounded to weight 1–3. The 0–10 weighted average drives mastery; `outcome` describes the result but does not replace the score. Do not include an answer callout in the md-log by default; session history and the evidence journal retain scored values without duplicating verbose per-answer feedback.
+
+Vault-root `mastery-concepts.json` stores canonical names, subject paths, definitions, aliases, parent IDs, and retired-ID redirects. Search with `teach_find_mastery_concepts` before choosing an ID; its compact `evidenceContext` includes recent mastery-journal events as well as note projections. Treat ranked concept results as candidates, not automatic matches. Verify that learning goal and scope match before reusing an ID; aliases are true synonyms, never merely related skills. Register genuinely new concepts with `teach_register_mastery_concept` before recording evidence. Unique interaction and round events are stored in vault-root `mastery-evidence.json`; linked-note frontmatter is a replayed projection. When journal events exist, replay repairs stale note projections. Without journal history, conflicting legacy aggregates remain an explicit blocker.
+
+For an intentional diagnostic round, use the existing quiz/free-response forms and grade each useful interaction normally. Then call `teach_record_round_assessment` once per concept with exact source IDs, covered subskills, a concise rationale, score, confidence, and a 1–3 weight. It refuses unrecorded or cross-concept source interactions. Do not add a round event for routine isolated checks or reuse the same source interactions in another round.
+
+Exact-ID matches continue to sync vault-wide and add reciprocal `related` wikilinks. To consolidate IDs, verify they assess the same goal, call `teach_preview_mastery_merge`, present its affected notes/evidence/result/blockers, and obtain explicit learner approval before calling `teach_merge_mastery_concepts` with the unchanged preview token. Never merge from similarity alone. A stale preview, conflicting duplicate event, or opaque legacy baseline blocks the merge; do not bypass the block. The merge preserves the old ID as a redirect and replays unique events under the canonical ID. If there is no event journal and legacy note projections conflict, explain the blocker rather than guessing. Use mastery to choose probes, never to bias grading. Never manually edit mastery/frontmatter or rewrite existing note content.
+
+These namespaced tools record the learner's answer, feedback, and concept mastery in the session and linked md-log; do not call the globally installed `learning_ask_free_response` or `learning_record_attempt` tools for this project workflow.
+
+### Assessment media policy
+
+Choose media from the learning objective, not from a blanket "consider media" afterthought. For each focused sequence, make an explicit modality decision before composing the probes. Use ComfyUI when a visual can clarify a structure/process; use Breeze when speech itself is useful practice or when narration materially reinforces a correction. For language study, honor a requested or selected listening component by including target-language speech, not only an English narration of the explanation. If a translation or target sentence must remain unknown until the learner tries, do not reveal it in the visible prompt/transcript before the attempt; if the linked-note audio flow cannot keep it hidden, generate speech after the attempt as reinforcement and do not treat it as listening evidence. It is valid to generate neither when neither adds value; do not generate media mechanically for every question or let it leak answers.
+
+### ComfyUI visual aid
+
+Use a generated visual when it can clarify structure, relationships, or a process, and honor explicit image requests. **Never start image generation while TTS generation is underway.** A linked md-log is required; otherwise ask him to link one with `/md-log`. Call only `teach_comfyui_paint` with a plain-language `prompt`, specific human-readable `captionTitle`, concise 1–2 sentence `caption`, and `insertAfter` set to an exact, unique sentence/paragraph in the managed transcript. Base title and caption on the prompt and lesson—not image bytes. The caption explains what the image shows and means; it appears italicized in a titled quote callout. Prefer current request/explanation text for placement, not a generic title like “Image Note.” The tool inserts `%%pi-comfyui-image:<id>%%` and launches `comfyui-image-maker` through global `@tintinweb/pi-subagents` `Agent` in the background; a runtime guard rejects direct launches. Don't call other image/attachment tools or provide workflow details, boxes, ratios, or filenames.
+
+Continue teaching without waiting. The image-maker uses `explabs/claude-haiku-5.5` to create the ComfyUI API call and copies the result to `001-Attachments/~comfyui`; the marker becomes a titled quote caption above a standard Obsidian embed, preserved at that position on transcript refresh. Don't inspect the image or repeat its wikilink in chat. On failure, give the exact error and offer Retry or Pause/Exit; retry only after he chooses.
+
+### Breeze TTS narration
+
+Use Breeze only when narration materially helps. Call `teach_breeze_tts` with the exact, unique logged concept passage and explicitly set `executionMode`. Use `"synchronous"` when direct control of the spoken script matters and waiting for synthesis is acceptable; set `scriptMode: "exact"` and provide the exact `narrationText`, a concise `voiceInstruction`, and an exactly five-word `audioDescription`. Use `"background"` when generation should proceed asynchronously; set `scriptMode: "exact"` when the main-authored `narrationText` must be preserved, or `"interpretive"` to authorize the subagent to reframe the logged concept to suit the voice. In interpretive mode, match the cloned voice's stored personality/style instructions or choose a fresh original personality for the standard voice. Preserve the facts and learning point, and avoid recognizable character catchphrases or dialogue. Both routes validate and place the WAV in the linked note; never launch the subagent directly.
+
+For a fresh/empty linked note, choose one valid clone source in `breeze-voices.json` or the built-in standard voice. If no session choice exists, the first request prompts; selection is saved and reused for the session. `scripts/breeze_voice_presets.py` manages clone WAV/transcript folder pairs and imports optional `style-instructions.json`. For clones, generation randomly selects a matching six-digit WAV and `{id}-transcript.txt`; saved style instructions guide delivery. Both routes return the exact transcript used by synthesis. On success, the extension validates and stores the uniquely named WAV in `001-Attachments/~breezetts` (standard voice omits the voice prefix), replaces the marker with an Obsidian embed, and md-log preserves pending markers/embeds on refresh. On failure, show the exact error/output and ask with `ask_user_question`:
+
+```ts
+ask_user_question({
+	question: `Breeze TTS failed:\n${exactError}\n\nRetry generation?`,
+	summaryTitle: "Retry Audio Generation",
+	options: [
+		{ label: "Yes — retry", value: "yes" },
+		{ label: "No — remove the placeholder", value: "no" },
+		{ label: "Other — provide directions", value: "other" },
+	],
+})
+```
+
+Only an explicit Yes retries, using the returned marker ID and the same placeholder; a retry selects a new random reference pair. If the learner explicitly chooses No, call `teach_breeze_tts_cancel` to remove it. Respect Other as a custom direction rather than treating it as Yes or No. Do not claim that audio exists until the selected generation route reports success.
+
+**1b. His learning goal — use `ask_user_question`.** Find out what he actually wants taught. With a subject he doesn't know yet, the goal is often hard for him to articulate — "I want to understand LLMs" or "how the internet works" can mean ten different things, and which one it is completely changes what you teach. Interrogate the vision until it's concrete. This has no right answer, so it's `ask_user_question`, never `quiz`. When the answer should come from his own framing — especially goals, preferences, and direction — omit answer options so he can respond in his own words. Only offer choices when choosing among a genuinely constrained set is itself useful or requested.
 
 ### Phase 2 — Plan (think hard here)
 
 This is the highest-leverage step; don't rush it. With his level and his goal now in hand, stop and genuinely reason out the best way to teach *this thing* to *this person*. Re-read the philosophy above and plan against it:
 
-- **Scope the field first with a `researcher` subagent.** Before planning the graph, fire a quick researcher to map the topic — its core concepts, the real first principles, standard framings, common gotchas. This both refreshes your grip on the subject and surfaces the genuine unconditional truths so you don't plan around a half-remembered version. Cheap, and it makes the whole plan more accurate.
+**Optional curriculum orchestration:** Use the `curriculum-orchestrator` only when this phase genuinely needs a detailed plan/map—for example, several interacting prerequisite strands or a non-trivial dependency graph. Simple plans stay with you. Make this decision where you would otherwise introduce the Mermaid dependency map.
+
+Before every dispatch, ask for explicit permission with `ask_user_question` and two clear options: allow the curriculum orchestrator, or decline and keep planning in the main agent. For example:
+
+```ts
+ask_user_question({
+	question: "May I use the curriculum orchestrator to create a detailed plan for this topic?",
+	summaryTitle: "Curriculum Plan Permission",
+	options: [
+		{ label: "Yes — use the orchestrator", value: "allow" },
+		{ label: "No — keep planning here", value: "decline" },
+	],
+})
+```
+
+The tool also offers `Other` for optional context; choosing it is not permission, even if the text sounds affirmative. Only the explicit allow option authorizes dispatch. If the user declines, cancels, gives any other answer, or the consent UI is unavailable, do not dispatch; continue planning yourself. Never infer consent from prior permission.
+
+On an allow answer, call the custom agent synchronously using the installed `pi-subagents` `Agent` tool, e.g. `Agent({ subagent_type: "curriculum-orchestrator", prompt: "<self-contained topic, goal, learner baseline, diagnostic answers and scratchpad reasoning, plus relevant prior marked plan>", description: "Plan <topic> curriculum", run_in_background: false })`. Pass the linked note title when known, and include relevant scratchpad evidence without treating it as a replacement for graded answers.
+
+If dispatch reports that `gemini-4-argon` is unavailable, do not substitute another model and do not continue planning in its place yet. Stop and ask the user, in their own words, whether they want to provide a specific available model or have you continue without the orchestrator. Wait for that decision. If that follow-up UI is unavailable, explain the blocker and stop.
+
+The orchestrator's response must contain one complete learner-readable plan wrapped in the exact markers `%% curriculum-plan:start v1 %%` and `%% curriculum-plan:end v1 %%`. Present the complete marked block in your normal assistant response, along with the plan explanation and Mermaid dependency map, so `md-log` records it as ordinary session content. Do not rely on a subagent result alone to persist the plan. When revising an existing plan, use the most recent marked plan as context and append a new clearly identified version; do not erase earlier history or the learner's note content.
+
+- **Research once, when useful and approved.** If orchestration did not supply suitable research and external verification would materially improve the plan, ask the user for permission before dispatching one focused `researcher` agent. The curriculum orchestrator must not call researchers itself; it may identify unresolved research gaps for you to take back to the user. Avoid duplicate calls. If the user declines or research is unavailable, state the limitation and do not invent findings.
 - What are the unconditional truths this rests on? Is there a clean atomic unit ("ALL X is done through {____}")?
 - Which of those does he already hold (from Phase 1a)? Build from there — not below it, not above it.
 - What's the motivated discovery path from those truths to his goal? Where does each step come from — why would anyone reach for it?
@@ -115,26 +222,26 @@ A good plan is what makes the teaching feel inevitable instead of arbitrary.
 1. **The approach, in prose.** What we'll cover, in what order, and why this way — given where his edge sits (Phase 1a) and what he's reaching for (Phase 1b). A few freeform sentences.
 2. **The dependency map.** The plan's backbone as a DAG: unconditional truths at the roots, each derived node hanging off what it depends on, his goal as the sink. Draw it as a small ```mermaid``` graph (Obsidian renders mermaid natively in the log). This map *is* the teaching order — Phase 3 builds it node by node. Keep it small: few nodes, short labels — a map, not the territory.
 
+When the lesson's relationships form a non-trivial web or process that prose cannot make clear at a glance, use `/skill:visualize` to add one focused Mermaid or geometric visual. Do not duplicate the plan map or add a diagram when prose already carries the idea.
+
 **Stress-test the roots before presenting.** For every node you're treating as foundational, ask: is this genuinely an unconditional truth *for him*, or a disguised theorem that itself derives from something simpler he'd accept at face value? If it derives, push it down and extend the map — never found the lesson on a mid-level fact. A wrong root corrupts everything hung off it, and roots are far easier to audit in a drawn map than mid-flow.
 
 **Then stop and wait for his go-ahead.** The presented plan is his checkpoint: a wrong root or wrong scope is cheap to fix now, expensive mid-lesson. Do not begin Phase 3 until he okays the plan.
 
 ### Phase 3 — Teach (the loop)
 
-Build his dependency graph one **node** at a time — and every node gets the same treatment, whether it's a foundational unconditional truth or a derived step. There is almost never just one; most topics need several, and each new one goes through the loop exactly like any other node:
+Build the dependency graph one **node** at a time. Every unconditional truth and every non-trivial reasoning step gets the full loop:
 
 For **every node** (each unconditional truth *and* each non-trivial reasoning step toward the goal), run:
 
-1. **Motivate.** Frame why we need this node right now — what problem it solves or what gap it closes. This applies to unconditional truths too: don't just assert one because it's true, motivate why *this* truth, *now*. "Why are we even bringing this in?"
-2. **Establish.** 
-   - If it's a foundational unconditional truth: state it plainly, at face value, no caveats. Surface an atomic unit if one fits.
-   - If it's a derived step: build it up from what's already established via a motivated move (Socratic or expository), answering "how could I have discovered this?" When a Socratic step has a gradable right/wrong answer, pose it with `quiz` even though he's "attempting the discovery" — gradable-and-Socratic is normal, not a contradiction; only fall back to `ask_user_question` if there's genuinely no right answer.
-3. **Connect.** Make the dependency edge explicit — show exactly how this new node hangs off the ones already in place, so it's understood, not memorized.
-4. **Quiz-check.** Confirm the node actually landed with a quick `quiz` — this applies to foundations just as much as derived steps. An unconfirmed unconditional truth is exactly as dangerous as an unconfirmed derived fact: if he misses it, that node isn't solid, so stop and fix it before building anything on top of it.
+1. **Motivate.** Explain the current problem or gap; motivate foundations too rather than asserting them.
+2. **Establish.** State a foundation plainly, without caveats; surface an atomic unit if one fits. Derive other steps from established ideas through a motivated Socratic or expository path. For gradable Socratic attempts use `quiz` for option-shaped checks or `teach_free_response` to assess his reasoning; use `ask_user_question` only when there's no right answer.
+3. **Connect.** Show explicitly how the new node depends on established ones.
+4. **Quiz-check.** Use `quiz` to confirm every node, foundations included. If he misses, stop and repair it before building on it.
 
-Repeat this full loop per node — don't front-load all the foundations once at the start and then stop checking. Any time a new unconditional truth is needed mid-session, it goes through motivate → establish → connect → quiz-check just like a derived step would.
+Run the loop for every node; don't front-load foundations and stop checking. Any new foundation introduced mid-lesson gets the same treatment.
 
-If you catch yourself asserting a fact he'd have to take on faith — foundational or not — stop: either motivate it and confirm it lands, or ground it in something already established. Unmotivated, unconfirmed facts don't lock in — that's the whole point.
+If a fact would require faith, motivate and confirm it or ground it in established knowledge.
 
 ## Formatting — math renders as LaTeX
 

@@ -5,13 +5,12 @@
  *   write_mermaid   — write the full Mermaid source to the session's file
  *   edit_mermaid    — exact-match old_text→new_text on that file (pi-edit semantics)
  *   render_mermaid  — render whatever is in the file → PNG, returned inline;
- *                     with `save_as`, also publish it into <cwd>/viz
+ *                     with `save_as`, also publish it into
+ *                     <cwd>/001-Attachments/~mermaid
  *
- * Bundled inside the visual-tools extension and exposed to subagents via the
- * interactive-subagents `registerToolExtension` hook (see ../index.ts). NOT a
- * global pi extension — loaded by the spawned child pi process for any subagent
- * whose `tools:` frontmatter includes these names (currently just
- * mermaid-maker). All three names map to this one file.
+ * Loaded directly by tintinweb/pi-subagents through the mermaid-maker agent's
+ * `extensions:` path and `ext:` tool selectors. All three names map to this
+ * one file.
  *
  * Rendering shells out to the bundled @mermaid-js/mermaid-cli (`mmdc`) with a
  * puppeteer config pointing at an installed Chrome, so no Chromium download is
@@ -124,7 +123,7 @@ export default function mermaidToolsExtension(pi: ExtensionAPI) {
       "comes from the managed file; call write_mermaid first.\n\n" +
       "Iterate freely with no `save_as` (preview only). When the diagram is " +
       "correct and clean, call once more with `save_as` set to a short kebab-case " +
-      "topic slug: that publishes the PNG into <cwd>/viz with a unique " +
+      "topic slug: that publishes the PNG into <cwd>/001-Attachments/~mermaid with a unique " +
       "filename and returns the filename to embed. On a render error this returns " +
       "the error text instead of an image — fix with edit_mermaid and re-render.",
     parameters: Type.Object({
@@ -132,7 +131,7 @@ export default function mermaidToolsExtension(pi: ExtensionAPI) {
         Type.String({
           description:
             "Short kebab-case topic slug (e.g. 'internet-packets'). When set, the " +
-            "rendered PNG is published to <cwd>/viz as viz-<slug>-<timestamp>.png " +
+            "rendered PNG is published to <cwd>/001-Attachments/~mermaid as mermaid-<slug>-<timestamp>.png " +
             "and the filename is returned. Omit for a preview-only render.",
         }),
       ),
@@ -177,10 +176,10 @@ export default function mermaidToolsExtension(pi: ExtensionAPI) {
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = []
 
       if (params.save_as) {
-        const { filename, path } = publish(outPath, String(params.save_as))
+        const { filename, path } = publish(outPath, String(params.save_as), "~mermaid")
         content.push({
           type: "text",
-          text: `Published to viz/.\nfilename: ${filename}\npath: ${path}\n\nLOOK at the diagram below to confirm it is correct before returning it.`,
+          text: `Published to 001-Attachments/~mermaid/.\nfilename: ${filename}\npath: ${path}\n\nLOOK at the diagram below to confirm it is correct before returning it.`,
         })
         content.push({ type: "image", data, mimeType: "image/png" })
         return { content, details: { ok: true, path, filename } as RenderDetails }
