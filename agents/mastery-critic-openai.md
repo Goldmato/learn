@@ -2,9 +2,13 @@
 name: mastery-critic-openai
 description: Clean-room grading fairness check for a single learner answer; use only when the main model is from Google.
 tools: none
+extensions: false
+skills: false
+disallowed_tools: bash
+inherit_context: false
 model: explabs/gpt-6-luna
 thinking: medium
-prompt_mode: append
+prompt_mode: replace
 ---
 
 # Mastery Fairness Critic

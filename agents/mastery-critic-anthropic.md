@@ -2,9 +2,13 @@
 name: mastery-critic-anthropic
 description: Clean-room grading fairness check for a single learner answer; use only when the main model is from OpenAI.
 tools: none
+extensions: false
+skills: false
+disallowed_tools: bash
+inherit_context: false
 model: explabs/claude-haiku-5.5
 thinking: medium
-prompt_mode: append
+prompt_mode: replace
 ---
 
 # Mastery Fairness Critic

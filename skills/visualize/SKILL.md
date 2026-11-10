@@ -31,12 +31,12 @@ The tool requires a linked md-log note. If no note is linked or no suitable tran
 
 ## Request a precise diagram
 
-Dispatch the suitable maker subagent through tintinweb's `pi-subagents` `Agent` tool. Give it one idea and the minimal set of elements needed to express it. Do not delegate to both makers for the same visual.
+Use `teach_visual` for every diagram. The wrapper inserts the note marker and dispatches the suitable maker with the needed attachment context; do not call the `Agent` tool directly or delegate to both makers for the same visual.
 
 - Use `mermaid-maker` for structure and relationships. Keep labels short and prefer a small number of truthful nodes and edges.
 - Use `svg-maker` only when exact positions, shapes, coordinates, or proportions matter. State the values and relationships precisely; do not leave geometry to visual guesswork.
 
-The maker must render a preview, inspect the returned image, correct any mistakes, and publish only after verification. SVG images are saved in `001-Attachments/~svg`; Mermaid images are saved in `001-Attachments/~mermaid`. If a maker cannot make a correct visual, it must return `RESULT: NONE`; do not invent a substitute. When a diagram maker returns a published filename, embed that file in the lesson using the actual filename and path it returned.
+The maker renders and inspects a preview, corrects any mistakes, and publishes only after verification. SVG images are saved in `001-Attachments/~svg`; Mermaid images are saved in `001-Attachments/~mermaid`. If a maker cannot make a correct visual, preserve the tool's reported failure and do not invent a substitute; the wrapper manages placement and recovery.
 
 ## Keep the visual focused
 

@@ -971,6 +971,7 @@ export default function quiz(pi: ExtensionAPI) {
 			"quiz is GRADED; ask_user_question is not. If the question has a correct answer, use quiz. If you just need a preference, decision, or open-ended input, use ask_user_question.",
 			"For most quiz questions, include a concise 3-6 word summaryTitle for the md-log heading; omit it when a title would be repetitive or awkward.",
 			"When teaching a concept, include a stable `conceptId` on each graded quiz so attempts contribute to that concept's mastery history.",
+			"After a quiz is answered, evaluate and record that interaction before launching another quiz, free response, or other assessment. Wait for `teach_record_attempt` to return before asking the next question; do not emit both calls in one assistant turn, because quiz dialogs wait for the learner and concurrent tool calls can make the record appear one answer late.",
 			'correctAnswer is REQUIRED and is the option value, not a position number. Single-select: one string (e.g. "mercury"). Multi-select: an array of strings (e.g. ["belize", "niue"]).',
 			"Always pass the option's `value` string as correctAnswer — it is self-checking and prevents miscounting positions. A value that matches no option is a hard error.",
 			"explanation is REQUIRED — always say why the correct answer is correct.",

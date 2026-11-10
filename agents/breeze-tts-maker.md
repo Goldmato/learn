@@ -3,6 +3,8 @@ name: breeze-tts-maker
 description: Generates one staged Breeze TTS WAV from an exact main-authored script or an authorized expressive reinterpretation of a logged learning point.
 tools: ext:breeze-tts/teach_breeze_generate_audio
 extensions: .pi\agents\extensions\breeze-tts.ts
+skills: false
+disallowed_tools: bash
 inherit_context: false
 prompt_mode: replace
 ---

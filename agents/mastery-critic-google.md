@@ -2,9 +2,13 @@
 name: mastery-critic-google
 description: Clean-room grading fairness check for a single learner answer; use only when the main model is from Anthropic.
 tools: none
+extensions: false
+skills: false
+disallowed_tools: bash
+inherit_context: false
 model: google/gemini-3-flash-latest
 thinking: medium
-prompt_mode: append
+prompt_mode: replace
 ---
 
 # Mastery Fairness Critic

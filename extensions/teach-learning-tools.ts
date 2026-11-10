@@ -799,6 +799,7 @@ export default function teachLearningTools(pi: ExtensionAPI) {
 		promptSnippet: "Record the learner's evaluated teaching attempt",
 		promptGuidelines: [
 			"Call this only when a completed quiz or teach_free_response interaction is relevant evidence for the selected concept; do not record preference, clarification, or other non-assessment questions.",
+			"Record the completed interaction before launching any next quiz, free response, or other assessment, and wait for this tool to return before asking the next question. Never bundle this call with a new learner-facing assessment; interactive quiz dialogs can make concurrent calls appear one answer late in the transcript.",
 			"Use the exact interactionId returned by teach_free_response and evidenceType free_response.",
 			"Include a concise explanation of the correct answer and key reasoning. Include misconception when the answer was incorrect.",
 			"For quiz results, use the complete returned interactionId exactly and evidenceType quiz. Never shorten or reconstruct the ID. Binary quiz evidence must be 10 when correct and 0 when incorrect or 'I don't know'.",
