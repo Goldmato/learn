@@ -168,7 +168,7 @@ export default function teachComfyuiPaint(pi: ExtensionAPI) {
 
 			const subagentPrompt = [
 				"Create one image for this plain-language request. Interpret the request yourself and make all ComfyUI API/workflow choices.",
-				"Use only the fixed MOSS image workflow available through your tools. Choose a suitable aspect ratio and layout; use the workflow's supported box limit.",
+				"Use only the fixed 4-step MOSS workflow with 2x SeedVR2 upscale available through your tools. Choose a suitable aspect ratio and layout; use the workflow's supported box limit.",
 				"Do not inspect project files, request extra context, or return image data.",
 				"When generation succeeds, call teach_attach_generated_image with the exact generated sourcePath, a short descriptive topic, the exact captionTitle and caption below, and the markerId and notePath below. The attachment tool duplicates the image into the vault and replaces the marker with a titled, italicized quote block followed by a standard Obsidian image embed.",
 				"If generation fails, call teach_attach_generated_image with markerId, notePath, and the exact error (no sourcePath, topic, captionTitle, or caption). The marker is preserved for the learner's recovery choice; return the exact error without claiming success.",

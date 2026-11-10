@@ -1,0 +1,994 @@
+{
+  "1": {
+    "inputs": {
+      "note": "{\"v\": 1, \"title\": \"MOSS-Image Text to Image\", \"subtitle\": \"Make a picture with MOSS-Image, the model that writes the words you give it. Switches write the prompt for you, place things and words with boxes, redraw a picture of yours (img2img) or change the words in it, and make the picture twice as big with SeedVR2.\", \"author\": \"AusBoss\", \"layout\": \"card\", \"accent\": \"\", \"body\": \"1. Write your prompt. Put every word you want in the picture in \\\"double quotes\\\".\\n2. Set the size in **Latent Size**.\\n3. Press **Run**.\\n\\n### Switches\\n\\n- **Auto prompt** on: the text encoder MOSS already uses turns a few words of yours into a full prompt, and writes out every word that belongs on a sign, a menu or a poster. What it wrote shows in **Show Text**. A second or two more, no extra file.\\n- **Layout boxes** on: draw a box for each thing or line of words on the canvas and say what goes in it. Your prompt still describes the whole picture. The canvas starts empty.\\n- **Enlarge 2x with SeedVR2** on: SeedVR2 makes the picture twice as big on each side and sharper, about 3 seconds more (1024 x 1536 becomes 2048 x 3072). It needs the two SeedVR2 files below. It sharpens a blurred background too, and small blurry writing can get made-up letters.\\n\\n### Your picture\\n\\n- **Off**: a new picture from your prompt.\\n- **Img2img**: load a picture. MOSS starts from your picture and draws over it, so the layout, the pose and the colors stay. The encoder describes your picture, so your prompt is optional: leave it empty, or type only what should change (\\\"make it winter\\\", \\\"the sign says OPEN LATE\\\"). Clear the example prompt first: whatever is in the box is taken as a change. **Denoise**, under the picture, sets how much changes: 0.8 as the file opens. Lower stays closer to your picture; 1 draws a new picture from the description. A slider shows yours beside MOSS's.\\n- **Change words**: load a picture and it shows on the boxes canvas. Draw a box over the words you want to change, pick **text** and type the new words. MOSS redraws only inside your boxes, and the rest of your picture stays as it was, at its own size. The encoder describes your picture, so your prompt is not used. With no box drawn, your picture comes back unchanged.\\n\\n### Steps\\n\\n- **50 steps**: the settings OpenMOSS gives, the most detail. About 18 seconds on an RTX 5090.\\n- **8 steps** or **4 steps**: a speed LoRA makes the picture in about 3 or 2 seconds. It comes out a little softer; **Enlarge 2x with SeedVR2** makes it sharp again.\\n- Get the two speed LoRAs below. The 4-step file downloads as `lora.safetensors`: rename it `MOSS-Image-SFT-4-steps.safetensors`.\\n- One is picked at a time. The pill sets the steps and CFG and turns the matching row on in **LoRA Loader**. When its LoRA is missing, the run stops and names the file.\\n\\n### Tips\\n\\n- MOSS writes exactly the words you give it. Words it has to make up come out as gibberish, so spell them out, or let Auto prompt do it.\\n- Write \\\"a young woman in her twenties\\\" rather than \\\"girl\\\": MOSS draws a child for \\\"girl\\\".\\n- **Img2img**: lower **Denoise** (0.6 or 0.7) to keep more of your picture, faces included, or raise it (0.9) for a bigger change. At 8 and 4 steps the same number changes a little more than at 50. If a person still comes out looking different, say how they look in your words: \\\"she has pale skin and freckles\\\".\\n- **Change words**: draw the box a little wider than the new words, and type them exactly as they should read. The box's words decide the letters.\\n- 50 steps at CFG 3, with layer 22 skipped on the negative: the settings OpenMOSS gives. On an RTX 5090 a 1.5 megapixel picture takes about 18 seconds with the INT8 file, about 20 with Auto prompt or a picture. 8 and 4 steps run at CFG 1, as the speed LoRAs ask, so the negative is not used.\\n- A new picture has the size you set in **Latent Size**. **Img2img** keeps your picture's shape at about 1 megapixel: set **megapixels** in the picture's loader for a bigger one. **Change words** keeps the size of your picture. **Enlarge 2x with SeedVR2** doubles it on each side.\\n- Your own LoRAs for MOSS-Image go in **LoRA Loader**, under the two speed rows. The speed LoRAs are made for SFT, the file this workflow loads.\\n\\n### Before you start\\n\\nMOSS-Image needs ComfyUI 0.42.0 or newer (out since 2026-10-18): update ComfyUI first. A git install: `git pull`, then `pip install -r requirements.txt`. The model is Apache 2.0.\\n\\nNeeds AusBoss nodes 2.16.1 or newer: **Change words** uses the boxes' mask and shows your picture on the boxes canvas in its own shape. On an older version, update it, or download v1.2 from the page: the same workflow without **Change words**.\", \"models\": [{\"name\": \"moss_image_sft_int8_convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"5.41 GB\", \"url\": \"https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"qwen3.5_9b_int8_convrot.safetensors\", \"dir\": \"text_encoders\", \"size\": \"9.75 GB\", \"url\": \"https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"flux2-vae.safetensors\", \"dir\": \"vae\", \"size\": \"336 MB\", \"url\": \"https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/vae/flux2-vae.safetensors\", \"note\": \"\"}, {\"name\": \"moss_image_sft_bf16.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"10.2 GB\", \"url\": \"https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/diffusion_models/moss_image_sft_bf16.safetensors\", \"note\": \"optional: the full-size file, same picture, about 2.4x slower\"}, {\"name\": \"qwen3.5_9b_w4a8_gptq.safetensors\", \"dir\": \"text_encoders\", \"size\": \"7.34 GB\", \"url\": \"https://huggingface.co/Comfy-Org/MOSS-Image/resolve/main/text_encoders/qwen3.5_9b_w4a8_gptq.safetensors\", \"note\": \"optional: a smaller text encoder for small cards, pick it in Text encoder\"}, {\"name\": \"lora_latest.safetensors\", \"dir\": \"loras\", \"size\": \"1.19 GB\", \"url\": \"https://huggingface.co/lodestones/MOSS-Image-SFT-8-steps-dmd/resolve/f95df83b5e90ae91ea412434b3f9b7f1c8c6314f/lora_latest.safetensors\", \"note\": \"for 8 steps: lodestones' speed LoRA for MOSS-Image SFT\"}, {\"name\": \"MOSS-Image-SFT-4-steps.safetensors\", \"dir\": \"loras\", \"size\": \"1.19 GB\", \"url\": \"https://huggingface.co/akhaliq/MOSS-Image-SFT-4-steps/resolve/5c6b125d1a1ae8847f0b44e4cb1cb10d38354ffd/lora.safetensors\", \"note\": \"for 4 steps: akhaliq's speed LoRA. It downloads as lora.safetensors: rename it to this name\"}, {\"name\": \"seedvr2_3b_int8_convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"3.46 GB\", \"url\": \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors\", \"note\": \"for Enlarge 2x with SeedVR2\"}, {\"name\": \"seedvr2_ema_vae_fp16.safetensors\", \"dir\": \"vae\", \"size\": \"501 MB\", \"url\": \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors\", \"note\": \"for Enlarge 2x with SeedVR2: SeedVR2's own VAE\"}], \"packs\": [{\"name\": \"ComfyUI-AusBoss\", \"url\": \"https://github.com/ausboss/ComfyUI-AusBoss\", \"node\": \"\"}], \"links\": [{\"label\": \"YouTube · this workflow\", \"url\": \"https://youtu.be/CF8pIIlV9-0\"}, {\"label\": \"Discord · AusBoss\", \"url\": \"https://discord.gg/RwVxY9Fuaj\"}, {\"label\": \"MOSS-Image files · Hugging Face\", \"url\": \"https://huggingface.co/Comfy-Org/MOSS-Image\"}, {\"label\": \"GitHub · ausboss\", \"url\": \"https://github.com/ausboss\"}, {\"label\": \"Civitai · AusBoss\", \"url\": \"https://civitai.com/user/AusBoss\"}, {\"label\": \"X · Zanzibased\", \"url\": \"https://x.com/Zanzibased\"}]}"
+    },
+    "class_type": "AUSBOSS_NODES_WorkflowNote",
+    "_meta": {
+      "title": "🆎 AusBoss",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "3": {
+    "inputs": {
+      "text": ""
+    },
+    "class_type": "AUSBOSS_NODES_Text",
+    "_meta": {
+      "title": "[VAR]PositivePrompt",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "4": {
+    "inputs": {
+      "seed": 20261017
+    },
+    "class_type": "AUSBOSS_NODES_Seed",
+    "_meta": {
+      "title": "Seed",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 1024,
+      "height": 1536,
+      "latent": "128ch",
+      "batch_size": 1
+    },
+    "class_type": "AUSBOSS_NODES_Resolution",
+    "_meta": {
+      "title": "[VAR]Resolution",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "8": {
+    "inputs": {
+      "clip_name": "qwen3.5_9b_w4a8_gptq.safetensors",
+      "type": "moss_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Text encoder",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "9": {
+    "inputs": {
+      "vae_name": "flux2-vae_small.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "10": {
+    "inputs": {
+      "unet_name": "moss_image_sft_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Diffusion model",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "11": {
+    "inputs": {
+      "loras": "[{\"name\":\"lora_latest.safetensors\",\"triggers\":\"\",\"strength\":0.7,\"enabled\":false},{\"name\":\"MOSS-Image-SFT-4-steps.safetensors\",\"triggers\":\"\",\"strength\":1,\"enabled\":true}]",
+      "trigger_separator": ", ",
+      "on_missing": "error",
+      "model": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "AUSBOSS_NODES_LoraLoader",
+    "_meta": {
+      "title": "[VAR]SpeedLoRAs",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "13": {
+    "inputs": {
+      "filename_prefix": "moss_image",
+      "format": "png",
+      "save_metadata": true,
+      "exact_name": "",
+      "on_existing": "overwrite",
+      "output_dir": "",
+      "caption": "",
+      "name_counter": true,
+      "name_date": false,
+      "name_time": false,
+      "name_size": false,
+      "name_batch": false,
+      "preview": true,
+      "step_preview": false,
+      "images": [
+        "105:116",
+        0
+      ]
+    },
+    "class_type": "AUSBOSS_NODES_SaveImage",
+    "_meta": {
+      "title": "[OUTPUT:image] Save Image",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "14": {
+    "inputs": {},
+    "class_type": "AUSBOSS_NODES_RunTimer",
+    "_meta": {
+      "title": "Run Timer",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "15": {
+    "inputs": {
+      "text": [
+        "39:75",
+        0
+      ]
+    },
+    "class_type": "AUSBOSS_NODES_ShowText",
+    "_meta": {
+      "title": "Show Text - Prompt sent to MOSS",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "42": {
+    "inputs": {
+      "text": "⬆️#3 Type your **prompt** here.\n###### Put the words you want in the picture in \"double quotes\". With **Auto prompt** on, a few words are enough. With **Img2img** it is optional, Auto prompt on or off: clear it, or type only the change. **Change words** does not use it.\n\n⬇️#6 Load your **picture** here for **Img2img** or **Change words**.\n###### It shows on the boxes canvas right away."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "43": {
+    "inputs": {
+      "text": "⬇️#2 **Auto prompt** writes the full prompt from a few words of yours.\n###### ➡️#15 Click this arrow to see the prompt MOSS gets.\n\n⬇️#2 **Layout boxes** places things and words where you draw them.\n\n⬇️#2 **Enlarge 2x with SeedVR2** makes the picture twice as big and sharper.\n###### It needs two files from the note. All three are off as the file opens.\n\n⬇️#119 **Your picture**: img2img, or change the words in it.\n\n⬇️#96 **Steps**: 50 for the most detail, 8 or 4 for a picture in seconds.\n###### 8 and 4 need their speed LoRA from the note."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "44": {
+    "inputs": {
+      "text": "Six boxes do the work: one writes the prompt, one draws the picture with your boxes, and one makes it twice as big with SeedVR2. One runs only with **Img2img**: it gives MOSS your picture to start from. The other two run only with **Change words**: one gets your picture ready, one puts the new words into it.\n###### Double-click one to see inside if you want."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "45": {
+    "inputs": {
+      "text": "⬇️#11 **8 steps and 4 steps need their speed LoRA.** Get both from the note ⬅️#1\n###### The 4-step file downloads as lora.safetensors: rename it MOSS-Image-SFT-4-steps.safetensors. The Steps pill turns these rows on and off. Your own LoRAs for MOSS-Image go under them."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "65": {
+    "inputs": {
+      "text": "[▶ **Watch the video**](https://youtu.be/CF8pIIlV9-0)\n[▶ **AusBoss on Discord**](https://discord.gg/RwVxY9Fuaj)\n###### Need help? Have a suggestion? Want more workflows?"
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "71": {
+    "inputs": {
+      "width": [
+        "5",
+        0
+      ],
+      "height": [
+        "5",
+        1
+      ],
+      "layout": "{\"v\": 1, \"boxes\": []}"
+    },
+    "class_type": "AUSBOSS_NODES_LayoutBoxes",
+    "_meta": {
+      "title": "[VAR]BoundingBoxes",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "95": {
+    "inputs": {
+      "text": "⬇️#71 With **Layout boxes** on, draw a **box** for each thing or line of words.\n###### Pick object or text, then say what goes in it. The size follows Latent Size. It starts empty: with no boxes the switch changes nothing.\n\n⬇️#71 With **Change words**, draw a box over the words you want to change.\n###### Pick text and type the new words exactly as they should read. Draw the box a little wider than the words."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "106": {
+    "inputs": {
+      "unet_name": "seedvr2_3b_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "SeedVR2 model",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "107": {
+    "inputs": {
+      "vae_name": "seedvr2_ema_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "SeedVR2 VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "108": {
+    "inputs": {
+      "text": "⬅️#106 **Enlarge 2x with SeedVR2 needs these two files.** Get them from the note ⬅️#1\n###### They load only while that switch is on, so the rest runs without them."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "146": {
+    "inputs": {
+      "text": "⬇️#145 **Denoise** sets how much **Img2img** changes your picture.\n###### 0.8 keeps the layout, the pose and the clothes and makes your change. Lower stays closer to your picture; 1 draws a new picture from the description."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "150": {
+    "inputs": {
+      "note": "{\"v\": 1, \"title\": \"Uncensored\", \"subtitle\": \"Where the prompt writer's instructions are, and an uncensored text encoder.\", \"author\": \"AusBoss\", \"layout\": \"card\", \"accent\": \"\", \"body\": \"- **Auto prompt** and **Img2img** are written by MOSS's own text encoder, from an instruction in the **Write the prompt** box (double-click it): \\\"How a prompt is written from your words\\\" for Auto prompt, \\\"... from your picture\\\" for Img2img. You can change both. Their only content rule is that every person is an adult.\\n- If a picture looks censored or tamer than you asked, read what the writer wrote in **Show Text**. Then change its instruction, or turn **Auto prompt** off and write the prompt yourself.\\n- For an uncensored writer, get the abliterated text encoder below, `Qwen3.5-9B-abliterated_int8_convrot.safetensors`, and pick it in **Text encoder**. MOSS reads your prompt with it too: in my tests it drew the same pictures, words spelled right.\\n- The negative prompt is OpenMOSS's, with \\\"nsfw\\\" taken out. It is in the **Draw with MOSS-Image** box and is used only at 50 steps.\", \"models\": [{\"name\": \"Qwen3.5-9B-abliterated_int8_convrot.safetensors\", \"dir\": \"text_encoders\", \"size\": \"9.47 GB\", \"url\": \"https://huggingface.co/beycanai/Qwen-LM/resolve/65be86eff5aab8bf7c1fe0d9a363e1fa8433d1ca/Qwen3.5-9B-abliterated_int8_convrot.safetensors\", \"note\": \"optional: an uncensored (abliterated) text encoder, pick it in Text encoder\"}], \"packs\": [], \"links\": []}"
+    },
+    "class_type": "AUSBOSS_NODES_WorkflowNote",
+    "_meta": {
+      "title": "🆎 AusBoss",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "41:17": {
+    "inputs": {
+      "text": "You are a prompt writer for an image model that draws exactly the words you give it.\n\nYou receive a short idea from the user.\n\nRewrite it as one full text-to-image prompt of five to eight sentences.\n- Begin with the medium and style in a few words, such as \"35mm film photograph\", \"Smartphone photo\", \"Anime illustration\", \"Oil painting\", \"Poster design\" or \"3D render\". Use the one the user names. If they name none, make it a photograph and pick the kind that suits the idea.\n- Then describe the subject, what they are doing and wearing, the setting and the background, with materials, colors, lighting, camera angle and framing.\n- Every person in the picture is an adult. Write \"a young woman in her twenties\" where the user says girl, and \"a young man in his twenties\" where the user says boy or guy.\n- Give the time of day in plain words, such as dusk or late at night. Leave out clock times and dates the user did not give.\n- When the idea has anything with writing on it, such as a sign, a label, a menu, a poster, a cover, a screen or a card, write its exact words: the user's words when they give them, otherwise short, specific words that fit the idea. Put each piece of writing in straight double quotes, spelled exactly, and say where it sits, how big it is, its color and its lettering. Keep the words few and short: a title and a line or two. Add small print only when the idea asks for it, and then write it out word for word. Never mention writing without giving its exact words: a menu lists each dish and price in quotes, a poster gives its title and every line under it in quotes.\n- Numbers in the picture are writing too: a price, a room number or the digits on a screen or a display go in quotes, such as \"$2.50\" or \"214\".\n- For a designed piece, such as a poster, a menu, a card, a cover or a label, say how it is laid out: what sits at the top, in the middle and at the bottom, which line is biggest, and how the lines line up.\n- Keep everything the user said. Stay with the user's one idea.\n- Put a person in the picture only when the user's idea names one. When the idea is a place, a room or a thing, the place is empty: describe only the place or the thing, with no guard, worker, passer-by or silhouette.\n- Every sentence says what is in the picture. Leave out anything that is absent: never write \"no\", \"not\" or \"without\" about the scene.\n- Write full sentences in plain factual language and the present tense. End each one with a period. Never use a semicolon or a label such as \"Lighting:\".\n\nOutput only the prompt: one paragraph, 100 to 180 words."
+    },
+    "class_type": "AUSBOSS_NODES_Text",
+    "_meta": {
+      "title": "Text - How a prompt is written from your words",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "41:18": {
+    "inputs": {
+      "f_string": "{a}\n\nThe user's idea: {b}",
+      "values.a": [
+        "41:17",
+        0
+      ],
+      "values.b": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "StringFormat",
+    "_meta": {
+      "title": "Format Text - Instructions plus your words",
+      "cnr_id": "comfy-core",
+      "ver": "0.38.0"
+    }
+  },
+  "41:19": {
+    "inputs": {
+      "text": "You are a prompt writer for an image model that draws exactly the words you give it.\n\nYou receive a picture and, after it, the user's words. The user's words may be empty.\n\nDescribe the picture as one full text-to-image prompt, so the model can draw it again with the user's changes.\n- Begin with the medium and the look in a few words, such as \"35mm film photograph\", \"Smartphone snapshot\", \"Studio portrait photograph\" or \"Anime illustration\".\n- Describe each person so the same person can be drawn again. Begin with their apparent ethnicity and skin tone in plain words, such as \"a young East Asian woman in her twenties with fair skin\" or \"a young Black man in his twenties with deep brown skin\". Then give the face shape and features, hair, expression, clothing with colors and materials, jewelry, pose, and what each hand is doing. Every person is an adult: write \"in her twenties\" or \"in his twenties\" for anyone who looks young.\n- Describe the setting and the background, the objects in it, the light and its colors, the camera angle and the framing.\n- Copy every readable word in the picture letter by letter in straight double quotes and say where it is.\n- Then follow the user's words. When they ask for a change, such as another outfit, another place, another style or other words on a sign, describe the picture with that change made. When they add something, put it in. The user's words win over the picture.\n- Every sentence says what is in the picture. Leave out anything that is absent: never write \"no\", \"not\" or \"without\" about the scene.\n- Write full sentences in plain factual language and the present tense. End each one with a period. Never use a semicolon or a label such as \"Lighting:\".\n\nOutput only the prompt: one paragraph, 100 to 180 words."
+    },
+    "class_type": "AUSBOSS_NODES_Text",
+    "_meta": {
+      "title": "Text - How a prompt is written from your picture",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "41:20": {
+    "inputs": {
+      "f_string": "{a}\n\nThe user's words: {b}",
+      "values.a": [
+        "41:19",
+        0
+      ],
+      "values.b": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "StringFormat",
+    "_meta": {
+      "title": "Format Text - Instructions plus your picture and words",
+      "cnr_id": "comfy-core",
+      "ver": "0.38.0"
+    }
+  },
+  "41:21": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "41:18",
+        0
+      ],
+      "on_true": [
+        "41:20",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "If/Else Switch - Your words or your picture",
+      "cnr_id": "comfy-core",
+      "ver": "0.38.0"
+    }
+  },
+  "41:22": {
+    "inputs": {
+      "prompt": [
+        "41:21",
+        0
+      ],
+      "max_length": 768,
+      "sampling_mode": "on",
+      "sampling_mode.temperature": 0.5,
+      "sampling_mode.top_k": 20,
+      "sampling_mode.top_p": 0.9,
+      "sampling_mode.min_p": 0,
+      "sampling_mode.repetition_penalty": 1,
+      "sampling_mode.seed": 1,
+      "sampling_mode.presence_penalty": 0,
+      "thinking": false,
+      "use_default_template": true,
+      "mtp": "off",
+      "clip": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "TextGenerate",
+    "_meta": {
+      "title": "Generate Text - MOSS's text encoder writes the prompt",
+      "cnr_id": "comfy-core",
+      "ver": "0.38.0"
+    }
+  },
+  "41:91": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "3",
+        0
+      ],
+      "on_true": [
+        "41:22",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "If/Else Switch - Auto prompt, or as typed",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "41:92": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "41:91",
+        0
+      ],
+      "on_true": [
+        "41:22",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "If/Else Switch - A picture is always written",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "41:46": {
+    "inputs": {
+      "text": "The instruction for your words.\n###### It turns a few words into a full prompt and writes out every word that belongs in the picture. You can change it."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "41:47": {
+    "inputs": {
+      "text": "The instruction for your picture.\n###### The writer looks at your picture, describes it and adds your words. You can change it."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "41:48": {
+    "inputs": {
+      "text": "The text encoder MOSS already uses writes the prompt.\n###### Thinking stays off: with it on, this encoder answered with nothing. With both switches off your words go through as typed."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "39:74": {
+    "inputs": {
+      "prompt": [
+        "41:92",
+        0
+      ],
+      "width": [
+        "5",
+        0
+      ],
+      "height": [
+        "5",
+        1
+      ],
+      "character_boxes": "",
+      "element": [
+        "71",
+        2
+      ]
+    },
+    "class_type": "MOSSImageLayoutPrompt",
+    "_meta": {
+      "title": "[VAR]CharacterBoxes",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:75": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "41:92",
+        0
+      ],
+      "on_true": [
+        "39:74",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "[VAR]LayoutEnabled",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:76": {
+    "inputs": {
+      "text": [
+        "39:75",
+        0
+      ],
+      "clip": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode - Your prompt",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:77": {
+    "inputs": {
+      "text": "worst quality, bad anatomy, watermark, jpeg artifact"
+    },
+    "class_type": "AUSBOSS_NODES_Text",
+    "_meta": {
+      "title": "[VAR]NegativePrompt",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "39:78": {
+    "inputs": {
+      "text": [
+        "39:77",
+        0
+      ],
+      "clip": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode - Negative",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:79": {
+    "inputs": {
+      "double_layers": "",
+      "single_layers": "22",
+      "start_percent": 0,
+      "end_percent": 1,
+      "model": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "SkipLayerGuidanceDiTSimple",
+    "_meta": {
+      "title": "Skip Layer Guidance - Layer 22 on the negative",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:29": {
+    "inputs": {
+      "seed": [
+        "4",
+        0
+      ],
+      "steps": [
+        "39:101",
+        0
+      ],
+      "cfg": [
+        "39:104",
+        0
+      ],
+      "sampler_name": "euler",
+      "scheduler": "sgm_uniform",
+      "denoise": [
+        "39:148",
+        0
+      ],
+      "model": [
+        "39:79",
+        0
+      ],
+      "positive": [
+        "39:76",
+        0
+      ],
+      "negative": [
+        "39:78",
+        0
+      ],
+      "latent_image": [
+        "5",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler - Steps and CFG from the pill, euler",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  },
+  "39:30": {
+    "inputs": {
+      "samples": [
+        "39:29",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "Decode",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  },
+  "39:49": {
+    "inputs": {
+      "text": "MOSS reads your prompt.\n###### With Layout boxes on, your boxes are added to it first. The negative is the one OpenMOSS recommends, without \"nsfw\"."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "39:50": {
+    "inputs": {
+      "text": "Steps and CFG come from the **Steps** pill.\n###### 50 steps at CFG 3 are the settings OpenMOSS gives, with layer 22 skipped on the negative. 8 and 4 steps run at CFG 1 with a speed LoRA. Then the picture is decoded."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "39:97": {
+    "inputs": {
+      "value": 50
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int - 50 steps",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:98": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int - 8 steps",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:99": {
+    "inputs": {
+      "value": 4
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "Int - 4 steps",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:102": {
+    "inputs": {
+      "value": 3
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Float - CFG 3 for 50 steps",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:103": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Float - CFG 1 with a speed LoRA",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:100": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "39:97",
+        0
+      ],
+      "on_true": [
+        "39:98",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "[VAR]EightStepSwitch",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:101": {
+    "inputs": {
+      "switch": true,
+      "on_false": [
+        "39:100",
+        0
+      ],
+      "on_true": [
+        "39:99",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "[VAR]FourStepSwitch",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:104": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "39:103",
+        0
+      ],
+      "on_true": [
+        "39:102",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "If/Else Switch - CFG 3 for 50 steps, else 1",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:149": {
+    "inputs": {
+      "text": "Denoise: the one you set with **Img2img**, otherwise 1.\n###### At 1 MOSS draws the whole picture new from your prompt."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "39:147": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "Float - Denoise 1 for a new picture",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "39:148": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "39:147",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "If/Else Switch - Your Denoise with Img2img, else 1",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.3"
+    }
+  },
+  "105:117": {
+    "inputs": {
+      "text": "Your picture is made twice as big on each side.\n###### 1024 x 1536 becomes 2048 x 3072, about 6 megapixels."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "105:110": {
+    "inputs": {
+      "target_mode": "scale_factor",
+      "width": 0,
+      "height": 0,
+      "edge_length": 1024,
+      "megapixels": 1,
+      "scale_factor": 2,
+      "keep_proportion": "fit",
+      "fill_color": "#000000",
+      "divisible_by": 16,
+      "interpolation": "lanczos",
+      "image": [
+        "39:30",
+        0
+      ]
+    },
+    "class_type": "AUSBOSS_NODES_ImageResize",
+    "_meta": {
+      "title": "Image Resize - Twice the size on each side",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "105:118": {
+    "inputs": {
+      "text": "One step of SeedVR2 3B sharpens it.\n###### Then its colors are set back to MOSS's picture. Its seed is the **Seed**."
+    },
+    "class_type": "AUSBOSS_NODES_Callout",
+    "_meta": {
+      "title": "Callout",
+      "cnr_id": "ausboss-nodes",
+      "ver": "2.16.1"
+    }
+  },
+  "105:111": {
+    "inputs": {
+      "resized_images": [
+        "105:110",
+        0
+      ]
+    },
+    "class_type": "SeedVR2Preprocess",
+    "_meta": {
+      "title": "SeedVR2 Preprocess",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  },
+  "105:112": {
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 128,
+      "temporal_size": 4096,
+      "temporal_overlap": 8,
+      "pixels": [
+        "105:111",
+        0
+      ],
+      "vae": [
+        "107",
+        0
+      ]
+    },
+    "class_type": "VAEEncodeTiled",
+    "_meta": {
+      "title": "VAE Encode (Tiled)",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  },
+  "105:113": {
+    "inputs": {
+      "model": [
+        "106",
+        0
+      ],
+      "vae_conditioning": [
+        "105:112",
+        0
+      ]
+    },
+    "class_type": "SeedVR2Conditioning",
+    "_meta": {
+      "title": "SeedVR2 Conditioning",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  },
+  "105:114": {
+    "inputs": {
+      "seed": [
+        "4",
+        0
+      ],
+      "steps": 1,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "106",
+        0
+      ],
+      "positive": [
+        "105:113",
+        0
+      ],
+      "negative": [
+        "105:113",
+        1
+      ],
+      "latent_image": [
+        "105:112",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler - 1 step, CFG 1",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  },
+  "105:115": {
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 128,
+      "temporal_size": 4096,
+      "temporal_overlap": 8,
+      "samples": [
+        "105:114",
+        0
+      ],
+      "vae": [
+        "107",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE Decode (Tiled)",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  },
+  "105:116": {
+    "inputs": {
+      "color_correction_method": "lab",
+      "images": [
+        "105:115",
+        0
+      ],
+      "original_resized_images": [
+        "105:110",
+        0
+      ]
+    },
+    "class_type": "SeedVR2PostProcessing",
+    "_meta": {
+      "title": "SeedVR2 Post Processing - Colors back to MOSS's",
+      "cnr_id": "comfy-core",
+      "ver": "0.41.0"
+    }
+  }
+}

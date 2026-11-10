@@ -151,6 +151,33 @@ export function copyGeneratedImage(
 	throw new Error(`Could not find an available ComfyUI attachment name for "${slug}".`);
 }
 
+export function copyCoverImage(
+	sourcePath: string,
+	outputRoot: string,
+	vaultRoot: string,
+	noteTitle: string,
+): ImageAttachment {
+	const realSource = validateGeneratedImageSource(sourcePath, outputRoot);
+	const extension = path.extname(realSource).toLowerCase();
+	const realVaultRoot = fs.realpathSync(vaultRoot);
+	const attachmentRoot = ensureVaultDirectory(realVaultRoot, path.join(realVaultRoot, "001-Attachments"));
+	const targetDir = ensureVaultDirectory(realVaultRoot, path.join(attachmentRoot, "~covers"));
+	const slug = imageSlug(noteTitle);
+
+	for (let sequence = 1; sequence <= 99_999; sequence++) {
+		const suffix = sequence === 1 ? "" : `-${sequence}`;
+		const filename = `${slug}-cover${suffix}${extension}`;
+		const targetPath = path.join(targetDir, filename);
+		try {
+			fs.copyFileSync(realSource, targetPath, fs.constants.COPYFILE_EXCL);
+			return { filename, path: targetPath, sourcePath: realSource };
+		} catch (error) {
+			if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error;
+		}
+	}
+	throw new Error(`Could not find an available cover filename for "${slug}".`);
+}
+
 export function moveGeneratedImage(
 	sourcePath: string,
 	outputRoot: string,

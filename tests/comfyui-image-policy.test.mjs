@@ -2,20 +2,24 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import {
-	buildMossBoundingBoxState,
+	buildMossLayout,
+	buildMossGenerationStepVariables,
 	buildMossWorkflowVariables,
 	MAX_MOSS_LAYOUT_BOXES,
 	MOSS_WORKFLOW,
+	MOSS_STEP_OPTIONS,
 	normalizeMossBoundingBoxes,
 	pathOnlyResult,
 	requirePreviewDisabled,
 	resolveMossCanvasSize,
 	suggestMossFilename,
+	validateMossWorkflowFeatures,
 	validateMossWorkflowInput,
+	validateMossWorkflowRuntime,
 } from "../lib/comfyui-image-policy.ts";
 
 test("MOSS workflow is fixed to the approved API template", () => {
-	assert.equal(MOSS_WORKFLOW, "MOSS_Image_base_T2i_BBoxes_API.json");
+	assert.equal(MOSS_WORKFLOW, "MOSS_Image_4Step_SeedVR2_API.json");
 });
 
 test("main agent has one prompt-and-placement paint tool backed by the isolated image-maker subagent", () => {
@@ -38,21 +42,106 @@ test("main agent has one prompt-and-placement paint tool backed by the isolated 
 	assert.match(visualizeSkill, /Use a diagram instead/);
 });
 
-test("exported MOSS API workflow exposes the prompt variables used by the wrapper", () => {
+test("published MOSS API workflow exposes selectable speed presets, layout, and SeedVR2 output", () => {
 	const workflowPath = new URL(`../comfyui_workflows/${MOSS_WORKFLOW}`, import.meta.url);
 	const workflow = JSON.parse(fs.readFileSync(workflowPath, "utf-8"));
-	assert.equal(workflow["36"].class_type, "MOSSImageLayoutPrompt");
-	assert.equal(workflow["36"]._meta.title, "[VAR]PositivePrompt");
-	assert.equal(workflow["34"]._meta.title, "[VAR]BoundingBoxes");
-	assert.equal(workflow["18:5"]._meta.title, "[VAR]NegativePrompt");
-	assert.equal(workflow["9"]._meta.title, "[OUTPUT:image]");
-	assert.equal(workflow["33"]._meta.title, "[VAR]Resolution");
-	assert.equal(workflow["33"].inputs.aspect_ratio, "1:1 (Square)");
-	assert.equal(workflow["33"].inputs.megapixels, 1);
-	assert.deepEqual(workflow["34"].inputs.editor_state.__value__, []);
-	assert.deepEqual(workflow["34"].inputs.last_incoming.__value__, []);
-	assert.equal(workflow["36"].inputs.prompt, "");
-	assert.equal(workflow["36"].inputs.character_boxes, "");
+	assert.equal(workflow["3"]._meta.title, "[VAR]PositivePrompt");
+	assert.equal(workflow["5"]._meta.title, "[VAR]Resolution");
+	assert.equal(workflow["71"]._meta.title, "[VAR]BoundingBoxes");
+	assert.equal(workflow["39:74"]._meta.title, "[VAR]CharacterBoxes");
+	assert.equal(workflow["39:75"]._meta.title, "[VAR]LayoutEnabled");
+	assert.equal(workflow["39:77"]._meta.title, "[VAR]NegativePrompt");
+	assert.equal(workflow["39:100"]._meta.title, "[VAR]EightStepSwitch");
+	assert.equal(workflow["39:101"]._meta.title, "[VAR]FourStepSwitch");
+	assert.equal(workflow["11"]._meta.title, "[VAR]SpeedLoRAs");
+	assert.equal(workflow["13"]._meta.title, "[OUTPUT:image] Save Image");
+	assert.equal(workflow["3"].inputs.text, "");
+	assert.equal(workflow["8"].inputs.clip_name, "qwen3.5_9b_w4a8_gptq.safetensors");
+	assert.equal(workflow["9"].inputs.vae_name, "flux2-vae_small.safetensors");
+	assert.equal(workflow["39:101"].inputs.switch, true);
+	assert.equal(workflow["39:104"].inputs.switch, false);
+	assert.equal(workflow["71"].inputs.layout, "{\"v\": 1, \"boxes\": []}");
+	assert.equal(workflow["13"].inputs.images[0], "105:116");
+	assert.equal(workflow["105:110"].inputs.scale_factor, 2);
+	assert.equal(workflow["106"].inputs.unet_name, "seedvr2_3b_int8_convrot.safetensors");
+	assert.equal(workflow["107"].inputs.vae_name, "seedvr2_ema_vae_fp16.safetensors");
+	assert.doesNotThrow(() => validateMossWorkflowFeatures(workflow));
+	const loras = JSON.parse(workflow["11"].inputs.loras);
+	assert.equal(loras.find((lora) => lora.name === "MOSS-Image-SFT-4-steps.safetensors").enabled, true);
+	assert.equal(loras.find((lora) => lora.name === "lora_latest.safetensors").enabled, false);
+
+	const rawVars = Object.fromEntries(Object.values(workflow)
+		.filter((node) => node._meta.title.startsWith("[VAR]"))
+		.map((node) => [
+			node._meta.title.slice("[VAR]".length),
+			{ keys: Object.keys(node.inputs), defaults: Object.values(node.inputs) },
+		]));
+	const boxes = [{ x: 0.2, y: 0.2, width: 0.4, height: 0.4, kind: "character", description: "A cell" }];
+	const variables = buildMossWorkflowVariables(rawVars, boxes, "A labeled diagram", "3:2 (Photo)");
+	assert.doesNotThrow(() => validateMossWorkflowInput(rawVars, variables, undefined));
+	assert.equal(variables.LayoutEnabled[0], true);
+	assert.equal(variables.CharacterBoxes[3], "1");
+	assert.equal(JSON.parse(variables.BoundingBoxes[2]).boxes.length, 1);
+});
+
+test("MOSS step presets switch sampler branches and enable exactly the matching speed LoRA", () => {
+	const workflow = JSON.parse(fs.readFileSync(
+		new URL(`../comfyui_workflows/${MOSS_WORKFLOW}`, import.meta.url),
+		"utf-8",
+	));
+	const rawVars = Object.fromEntries(Object.values(workflow)
+		.filter((node) => node._meta.title.startsWith("[VAR]"))
+		.map((node) => [
+			node._meta.title.slice("[VAR]".length),
+			{ keys: Object.keys(node.inputs), defaults: Object.values(node.inputs) },
+		]));
+	assert.deepEqual(MOSS_STEP_OPTIONS, [4, 8]);
+
+	for (const steps of MOSS_STEP_OPTIONS) {
+		const variables = buildMossGenerationStepVariables(rawVars, steps);
+		assert.equal(variables.FourStepSwitch[0], steps === 4);
+		assert.equal(variables.EightStepSwitch[0], steps === 8);
+		const loras = JSON.parse(variables.SpeedLoRAs[0]);
+		assert.equal(loras.find((lora) => lora.name === "MOSS-Image-SFT-4-steps.safetensors").enabled, steps === 4);
+		assert.equal(loras.find((lora) => lora.name === "lora_latest.safetensors").enabled, steps === 8);
+	}
+});
+
+test("MOSS runtime preflight detects unavailable nodes, models, and selected LoRAs", () => {
+	const workflow = JSON.parse(fs.readFileSync(
+		new URL(`../comfyui_workflows/${MOSS_WORKFLOW}`, import.meta.url),
+		"utf-8",
+	));
+	const objectInfo = {};
+	for (const node of Object.values(workflow)) {
+		const nodeInfo = objectInfo[node.class_type] ??= { input: { required: {} } };
+		for (const inputName of ["clip_name", "unet_name", "vae_name"]) {
+			const model = node.inputs[inputName];
+			if (typeof model !== "string") continue;
+			const options = nodeInfo.input.required[inputName] ??= [[]];
+			if (!options[0].includes(model)) options[0].push(model);
+		}
+	}
+	const installedLoras = ["MOSS-Image-SFT-4-steps.safetensors", "lora_latest.safetensors"];
+	assert.doesNotThrow(() => validateMossWorkflowRuntime(workflow, objectInfo, installedLoras, 4));
+	assert.doesNotThrow(() => validateMossWorkflowRuntime(workflow, objectInfo, installedLoras, 8));
+
+	delete objectInfo.AUSBOSS_NODES_LayoutBoxes;
+	assert.throws(
+		() => validateMossWorkflowRuntime(workflow, objectInfo, installedLoras, 4),
+		/missing ComfyUI node "AUSBOSS_NODES_LayoutBoxes"/,
+	);
+	objectInfo.AUSBOSS_NODES_LayoutBoxes = { input: { required: {} } };
+	assert.throws(
+		() => validateMossWorkflowRuntime(workflow, objectInfo, installedLoras.filter((lora) => lora !== "lora_latest.safetensors"), 8),
+		/not installed in ComfyUI's LoRA folder/,
+	);
+	const missingMossModel = structuredClone(workflow);
+	missingMossModel["10"].inputs.unet_name = "missing-moss-model.safetensors";
+	assert.throws(
+		() => validateMossWorkflowRuntime(missingMossModel, objectInfo, installedLoras, 4),
+		/not find model "missing-moss-model.safetensors"/,
+	);
 });
 
 test("image generation and job lookup require previews to remain disabled", () => {
@@ -61,7 +150,17 @@ test("image generation and job lookup require previews to remain disabled", () =
 });
 
 test("MOSS workflow inputs must match declared prompt variables", () => {
-	const rawVars = { PositivePrompt: "node", BoundingBoxes: "node", Resolution: "node", NegativePrompt: "node" };
+	const rawVars = {
+		PositivePrompt: "node",
+		BoundingBoxes: "node",
+		Resolution: "node",
+		CharacterBoxes: "node",
+		LayoutEnabled: "node",
+		FourStepSwitch: "node",
+		EightStepSwitch: "node",
+		SpeedLoRAs: "node",
+		NegativePrompt: "node",
+	};
 	assert.doesNotThrow(() => validateMossWorkflowInput(rawVars, { BoundingBoxes: [], Resolution: [] }, "blurry"));
 	assert.throws(() => validateMossWorkflowInput({}, undefined, undefined), /PositivePrompt/);
 	assert.throws(
@@ -69,53 +168,64 @@ test("MOSS workflow inputs must match declared prompt variables", () => {
 		/Unknown MOSS workflow variable.*Unused/,
 	);
 	assert.throws(
-		() => validateMossWorkflowInput({ PositivePrompt: "node", Resolution: "node" }, undefined, "blurry"),
+		() => validateMossWorkflowInput({
+			PositivePrompt: "node",
+			Resolution: "node",
+			BoundingBoxes: "node",
+			CharacterBoxes: "node",
+			LayoutEnabled: "node",
+			FourStepSwitch: "node",
+			EightStepSwitch: "node",
+			SpeedLoRAs: "node",
+		}, undefined, "blurry"),
 		/does not expose a \[VAR\]NegativePrompt/,
-	);
-	assert.throws(
-		() => validateMossWorkflowInput({ PositivePrompt: "node" }, undefined, undefined),
-		/missing the required \[VAR\]Resolution/,
 	);
 });
 
-test("normalized MOSS boxes become bounded pixel geometry and exact text metadata", () => {
+test("MOSS boxes use AusBoss normalized layout geometry and exact text metadata", () => {
 	const boxes = [
-		{ x: 0, y: 0, width: 1, height: 1, kind: "object", description: "Full-scene background" },
 		{ x: 0.25, y: 0.25, width: 0.5, height: 0.5, kind: "character", description: "Learner observing a cell" },
 		{ x: 0.05, y: 0.05, width: 0.3, height: 0.1, kind: "text", text: "ATP", description: "Label at top left" },
 	];
-	const state = buildMossBoundingBoxState(boxes);
-	assert.deepEqual(state.__value__[1], {
-		x: 256,
-		y: 256,
-		width: 512,
-		height: 512,
-		metadata: { type: "obj", text: "", desc: "Learner observing a cell", palette: [] },
-	});
-	assert.deepEqual(state.__value__[2].metadata, {
-		type: "text",
-		text: "ATP",
-		desc: "Label at top left",
-		palette: [],
+	const state = buildMossLayout(boxes);
+	assert.deepEqual(state, {
+		v: 1,
+		boxes: [
+			{
+				x: 0.25,
+				y: 0.25,
+				w: 0.5,
+				h: 0.5,
+				type: "obj",
+				text: "",
+				desc: "Learner observing a cell",
+				palette: [],
+			},
+			{
+				x: 0.05,
+				y: 0.05,
+				w: 0.3,
+				h: 0.1,
+				type: "text",
+				text: "ATP",
+				desc: "Label at top left",
+				palette: [],
+			},
+		],
 	});
 });
 
-test("MOSS layouts default the background and infer text-box kind from exact copy", () => {
-	const boxes = [
+test("MOSS layouts stay empty when boxes are omitted and infer text type from exact copy", () => {
+	const state = buildMossLayout(normalizeMossBoundingBoxes());
+	assert.deepEqual(state, { v: 1, boxes: [] });
+	const textBox = buildMossLayout([
 		{ x: 0.1, y: 0.1, width: 0.3, height: 0.1, text: "ATP" },
-	];
-	const state = buildMossBoundingBoxState([
-		{ x: 0, y: 0, width: 1, height: 1, kind: "object", description: "Full canvas" },
-		...boxes,
 	]);
-	assert.equal(state.__value__.length, 2);
-	assert.deepEqual(state.__value__[0].metadata, {
-		type: "obj",
-		text: "",
-		desc: "Full canvas",
-		palette: [],
-	});
-	assert.deepEqual(state.__value__[1].metadata, {
+	assert.deepEqual(textBox.boxes[0], {
+		x: 0.1,
+		y: 0.1,
+		w: 0.3,
+		h: 0.1,
 		type: "text",
 		text: "ATP",
 		desc: "Visible text: ATP",
@@ -123,64 +233,78 @@ test("MOSS layouts default the background and infer text-box kind from exact cop
 	});
 });
 
-test("MOSS variables preserve workflow links while replacing demo boxes and character indices", () => {
+test("MOSS variables preserve workflow links while replacing layout, size, and character indices", () => {
 	const rawVars = {
 		PositivePrompt: {
-			keys: ["prompt", "width", "height", "character_boxes", "element"],
-			defaults: ["", ["33", 0], ["33", 1], "", ["34", 2]],
+			keys: ["text"],
+			defaults: [""],
 		},
 		BoundingBoxes: {
-			keys: ["width", "height", "editor_state", "last_incoming"],
-			defaults: [["33", 0], ["33", 1], { __value__: [] }, { __value__: [] }],
+			keys: ["width", "height", "layout"],
+			defaults: [["5", 0], ["5", 1], "{\"v\": 1, \"boxes\": []}"],
 		},
 		Resolution: {
-			keys: ["aspect_ratio", "megapixels", "multiple"],
-			defaults: ["1:1 (Square)", 1, 16],
+			keys: ["width", "height", "latent", "batch_size"],
+			defaults: [1024, 1536, "128ch", 1],
+		},
+		CharacterBoxes: {
+			keys: ["prompt", "width", "height", "character_boxes", "element"],
+			defaults: [["41:92", 0], ["5", 0], ["5", 1], "", ["71", 2]],
+		},
+		LayoutEnabled: {
+			keys: ["switch", "on_false", "on_true"],
+			defaults: [false, ["41:92", 0], ["39:74", 0]],
 		},
 	};
 	const boxes = [
-		{ x: 0, y: 0, width: 1, height: 1, kind: "object", description: "Scene background" },
 		{ x: 0.2, y: 0.2, width: 0.5, height: 0.5, kind: "character", description: "A scientist" },
+		{ x: 0.05, y: 0.05, width: 0.2, height: 0.1, text: "CELL" },
 	];
 	const variables = buildMossWorkflowVariables(rawVars, boxes, "", "1:1 (Square)");
 	const squareCanvas = resolveMossCanvasSize("", "1:1 (Square)");
-	assert.deepEqual(variables.PositivePrompt, ["", ["33", 0], ["33", 1], "2", ["34", 2]]);
+	assert.deepEqual(variables.PositivePrompt, [""]);
+	assert.deepEqual(variables.CharacterBoxes, [["41:92", 0], ["5", 0], ["5", 1], "1", ["71", 2]]);
+	assert.deepEqual(variables.LayoutEnabled, [true, ["41:92", 0], ["39:74", 0]]);
+	assert.deepEqual(variables.Resolution, [squareCanvas.width, squareCanvas.height, "128ch", 1]);
 	assert.deepEqual(variables.BoundingBoxes, [
-		["33", 0],
-		["33", 1],
-		{ __value__: buildMossBoundingBoxState(boxes, squareCanvas).__value__ },
-		{ __value__: buildMossBoundingBoxState(boxes, squareCanvas).__value__ },
+		["5", 0],
+		["5", 1],
+		JSON.stringify(buildMossLayout(boxes)),
 	]);
 });
 
-test("MOSS generation accepts prompt-only layouts and automatically adds a valid background", () => {
+test("MOSS generation accepts prompt-only requests without enabling layout boxes", () => {
 	const rawVars = {
 		PositivePrompt: {
-			keys: ["prompt", "width", "height", "character_boxes", "element"],
-			defaults: ["", ["33", 0], ["33", 1], "", ["34", 2]],
+			keys: ["text"],
+			defaults: [""],
 		},
 		BoundingBoxes: {
-			keys: ["width", "height", "editor_state", "last_incoming"],
-			defaults: [["33", 0], ["33", 1], { __value__: [] }, { __value__: [] }],
+			keys: ["width", "height", "layout"],
+			defaults: [["5", 0], ["5", 1], "{\"v\": 1, \"boxes\": []}"],
 		},
 		Resolution: {
-			keys: ["aspect_ratio", "megapixels", "multiple"],
-			defaults: ["1:1 (Square)", 1, 16],
+			keys: ["width", "height", "latent", "batch_size"],
+			defaults: [1024, 1536, "128ch", 1],
+		},
+		CharacterBoxes: {
+			keys: ["prompt", "width", "height", "character_boxes", "element"],
+			defaults: [["41:92", 0], ["5", 0], ["5", 1], "", ["71", 2]],
+		},
+		LayoutEnabled: {
+			keys: ["switch", "on_false", "on_true"],
+			defaults: [false, ["41:92", 0], ["39:74", 0]],
 		},
 	};
 	const variables = buildMossWorkflowVariables(rawVars);
-	assert.deepEqual(variables.Resolution, ["3:2 (Photo)", 1.1, 16]);
-	assert.equal(variables.BoundingBoxes[2].__value__.length, 1);
-	assert.equal(variables.BoundingBoxes[2].__value__[0].x, 0);
-	assert.equal(variables.BoundingBoxes[2].__value__[0].y, 0);
-	assert.equal(variables.BoundingBoxes[2].__value__[0].width, resolveMossCanvasSize("").width);
-	assert.equal(variables.BoundingBoxes[2].__value__[0].height, resolveMossCanvasSize("").height);
-	assert.deepEqual(variables.BoundingBoxes[2].__value__[0].metadata, {
-		type: "obj",
-		text: "",
-		desc: "Full-canvas scene background",
-		palette: [],
-	});
+	assert.deepEqual(variables.Resolution, [
+		resolveMossCanvasSize("").width,
+		resolveMossCanvasSize("").height,
+		"128ch",
+		1,
+	]);
+	assert.equal(variables.BoundingBoxes[2], "{\"v\":1,\"boxes\":[]}");
+	assert.equal(variables.LayoutEnabled[0], false);
 });
 
 test("MOSS chooses ratio and megapixels from content intent and keeps boxes on that canvas", () => {
@@ -205,35 +329,37 @@ test("MOSS chooses ratio and megapixels from content intent and keeps boxes on t
 	assert.equal(suggestMossFilename("Create a polished educational infographic about goblin hibernation cycles"), "goblin-hibernation-cycles");
 });
 
-test("oversized MOSS layouts are capped to the workflow limit instead of rejected", () => {
-	const boxes = Array.from({ length: 20 }, (_, index) => ({
+test("MOSS layouts accept 64 boxes and reject excess boxes instead of silently dropping them", () => {
+	const boxes = Array.from({ length: MAX_MOSS_LAYOUT_BOXES }, (_, index) => ({
 		x: 0.01 * index,
 		y: 0.01 * index,
-		width: 0.2,
-		height: 0.2,
+		width: 0.1,
+		height: 0.1,
 		description: `Element ${index + 1}`,
 	}));
 	const normalized = normalizeMossBoundingBoxes(boxes);
 	assert.equal(normalized.length, MAX_MOSS_LAYOUT_BOXES);
-	assert.equal(normalized[0].description, "Full-canvas scene background");
-	assert.equal(normalized.at(-1)?.description, "Element 11");
+	assert.equal(normalized[0].description, "Element 1");
+	assert.equal(normalized.at(-1)?.description, "Element 64");
+	assert.throws(
+		() => normalizeMossBoundingBoxes([...boxes, boxes[0]]),
+		/support up to 64 bounding boxes; received 65/,
+	);
 });
 
 test("invalid MOSS box layouts fail explicitly", () => {
-	const background = { x: 0, y: 0, width: 1, height: 1, kind: "object", description: "Scene background" };
 	const validBox = { x: 0.1, y: 0.1, width: 0.5, height: 0.5, kind: "object", description: "Main scene" };
-	assert.throws(() => buildMossBoundingBoxState([]), /require 1-12 bounding boxes/);
 	assert.throws(
-		() => buildMossBoundingBoxState([validBox]),
-		/first MOSS bounding box must be an object covering the full canvas/,
-	);
-	assert.throws(
-		() => buildMossBoundingBoxState([background, { ...validBox, x: 0.8 }]),
+		() => buildMossLayout([{ ...validBox, x: 0.8 }]),
 		/stay within the canvas/,
 	);
-	assert.doesNotThrow(() => buildMossBoundingBoxState([background, { ...validBox, kind: "text" }]));
-	const missingDescription = buildMossBoundingBoxState([background, { ...validBox, description: " ".repeat(3) }]);
-	assert.equal(missingDescription.__value__[1].metadata.desc, "Composition element 2");
+	assert.doesNotThrow(() => buildMossLayout([{ ...validBox, kind: "text", text: "OK" }]));
+	assert.throws(
+		() => buildMossLayout([{ ...validBox, kind: "text", text: "" }]),
+		/must contain 1.100 characters/,
+	);
+	const missingDescription = buildMossLayout([{ ...validBox, description: " ".repeat(3) }]);
+	assert.equal(missingDescription.boxes[0].desc, "Composition element 1");
 });
 
 test("ComfyUI output is returned only when all content is text", () => {

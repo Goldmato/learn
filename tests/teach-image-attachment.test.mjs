@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+	copyCoverImage,
 	copyGeneratedImage,
 	findVaultRoot,
 	insertImagePlaceholder,
@@ -45,6 +46,32 @@ test("generated image copies stay inside the vault and increment topic filenames
 		assert.equal(first.filename, "comfyui-energy-flow-1.webp");
 		assert.equal(retry.filename, "comfyui-energy-flow-2.webp");
 		assert.equal(path.dirname(first.path), path.join(vaultRoot, "001-Attachments", "~comfyui"));
+		assert.deepEqual(fs.readFileSync(first.path), fs.readFileSync(outputPath));
+		assert.deepEqual(fs.readFileSync(retry.path), fs.readFileSync(retryPath));
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("cover images use the dedicated covers folder and unique note-based names", () => {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "teach-cover-copy-"));
+	const outputRoot = path.join(root, "paint-jobs");
+	const vaultRoot = path.join(root, "vault");
+	const outputPath = path.join(outputRoot, "job-1", "outputs", "cover.png");
+	fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+	fs.mkdirSync(path.join(vaultRoot, ".obsidian"), { recursive: true });
+	fs.writeFileSync(outputPath, Buffer.from("generated cover bytes"));
+
+	try {
+		const first = copyCoverImage(outputPath, outputRoot, vaultRoot, "Spec Design");
+		const retryPath = path.join(outputRoot, "job-2", "outputs", "cover.png");
+		fs.mkdirSync(path.dirname(retryPath), { recursive: true });
+		fs.writeFileSync(retryPath, Buffer.from("retry cover bytes"));
+		const retry = copyCoverImage(retryPath, outputRoot, vaultRoot, "Spec Design");
+
+		assert.equal(first.filename, "spec-design-cover.png");
+		assert.equal(retry.filename, "spec-design-cover-2.png");
+		assert.equal(path.dirname(first.path), path.join(vaultRoot, "001-Attachments", "~covers"));
 		assert.deepEqual(fs.readFileSync(first.path), fs.readFileSync(outputPath));
 		assert.deepEqual(fs.readFileSync(retry.path), fs.readFileSync(retryPath));
 	} finally {

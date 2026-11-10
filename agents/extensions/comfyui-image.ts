@@ -5,21 +5,26 @@ import {
 	resolvePaintOutputRoot,
 } from "../../lib/teach-image-attachment.ts";
 import { getConfig } from "../../npm/node_modules/pi-comfyui-paint/src/config.ts";
+import { reserveBackend } from "../../npm/node_modules/pi-comfyui-paint/src/backends.ts";
 import { createJobStatusTool } from "../../npm/node_modules/pi-comfyui-paint/src/tools/job-status.ts";
 import { createPaintTool } from "../../npm/node_modules/pi-comfyui-paint/src/tools/paint.ts";
 import { createValidateWorkflowTool } from "../../npm/node_modules/pi-comfyui-paint/src/tools/validate-workflow.ts";
 import {
+	buildMossGenerationStepVariables,
 	buildMossWorkflowVariables,
 	MAX_MOSS_INPUT_BOXES,
 	MOSS_ASPECT_RATIOS,
+	MOSS_STEP_OPTIONS,
 	MOSS_WORKFLOW,
 	normalizeMossBoundingBoxes,
 	pathOnlyResult,
 	requirePreviewDisabled,
 	resolveMossCanvasSize,
 	suggestMossFilename,
+	validateMossWorkflowFeatures,
 	validateMossWorkflowInput,
 } from "../../lib/comfyui-image-policy.ts";
+import { preflightMossBackend } from "../../lib/comfyui-image-runtime.ts";
 import {
 	loadWorkflowJson,
 	parseWorkflowDetails,
@@ -107,16 +112,17 @@ export default function comfyuiImage(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "teach_comfyui_generate",
 		label: "Teaching: Generate MOSS Image",
-		description: "Generate one learner-facing MOSS image from a bounded prompt and the fixed approved workflow.",
-		promptSnippet: "Generate a learner-facing MOSS image from the approved workflow",
+		description: "Generate one learner-facing MOSS image with selectable 4- or 8-step LoRA and 2x SeedVR2 upscale.",
+		promptSnippet: "Generate a learner-facing MOSS image with 4/8 steps and 2x SeedVR2 upscale",
 		promptGuidelines: [
-			"Use only the fixed MOSS workflow; do not inspect local files or request access to other workflows.",
+			"Use only the fixed MOSS workflow with its 4/8-step LoRA and 2x SeedVR2 upscale; do not inspect local files or request access to other workflows.",
 			"Keep the prompt focused on the requested illustration and its visible composition.",
 			"Select an aspectRatio that fits the composition. If omitted, the tool infers one from the prompt; it does not default every image to square.",
-			"Bounding boxes are optional. If omitted, the tool adds a valid full-canvas background box. The workflow supports 12 boxes total; extra boxes are safely omitted rather than causing the generation call to fail.",
+			"Bounding boxes are optional. If supplied, use normalized coordinates and no more than 64 boxes.",
 			"Use normalized coordinates. A visible text value automatically makes its box a text box; otherwise kind defaults to object.",
 			"Supply a concise, descriptive filename of a few words when practical; otherwise the tool derives one from the prompt and safely renames the completed output.",
-			"Resolution is computed automatically from aspect ratio using 0.8-1.2 megapixels.",
+			"Resolution is computed automatically from aspect ratio using 0.8-1.2 megapixels before the workflow's 2x SeedVR2 upscale.",
+			"The tool defaults to 4 steps. Choose 8 only when the caller requests it; the tool validates the matching LoRA, custom nodes, and base models before queueing.",
 		],
 		parameters: Type.Object({
 			prompt: Type.String({ minLength: 1 }),
@@ -125,6 +131,9 @@ export default function comfyuiImage(pi: ExtensionAPI) {
 				description: "A few-word descriptive base name for the generated image, without a file extension.",
 			})),
 			aspectRatio: Type.Optional(Type.Union(MOSS_ASPECT_RATIOS.map((ratio) => Type.Literal(ratio)))),
+			steps: Type.Optional(Type.Union(MOSS_STEP_OPTIONS.map((steps) => Type.Literal(steps)), {
+				description: "Generation speed preset. Defaults to 4 steps; 8 steps uses the 8-step LoRA.",
+			})),
 			negativePrompt: Type.Optional(Type.String()),
 			boxes: Type.Optional(Type.Array(Type.Object({
 				x: Type.Number({ minimum: 0, maximum: 1 }),
@@ -157,17 +166,32 @@ export default function comfyuiImage(pi: ExtensionAPI) {
 			);
 			const workflow = loadWorkflowJson(workflowPath);
 			if (!workflow) throw new Error(`Failed to load MOSS workflow: ${workflowPath}`);
+			validateMossWorkflowFeatures(workflow);
 			const details = parseWorkflowDetails(workflow);
+			const steps = params.steps ?? 4;
 			const negativePrompt = params.negativePrompt?.trim();
 			const canvas = resolveMossCanvasSize(prompt, params.aspectRatio);
 			const normalizedBoxes = normalizeMossBoundingBoxes(params.boxes);
-			const omittedBoxes = Math.max(0, (params.boxes?.length ?? 0) - normalizedBoxes.length);
-			const variables = buildMossWorkflowVariables(details.rawVars, params.boxes, prompt, canvas.aspectRatio);
+			const variables = {
+				...buildMossWorkflowVariables(details.rawVars, normalizedBoxes, prompt, canvas.aspectRatio),
+				...buildMossGenerationStepVariables(details.rawVars, steps),
+			};
 			validateMossWorkflowInput(details.rawVars, variables, negativePrompt);
+
+			const reservation = await reserveBackend(config.backends, {
+				requiredCapabilities: details.capabilities,
+			}, signal);
+			const backend = reservation.backend;
+			try {
+				await preflightMossBackend(backend, workflow, steps, signal);
+			} finally {
+				reservation.release();
+			}
 
 			const result = await paintTool.execute({
 				prompt,
 				workflow: MOSS_WORKFLOW,
+				backend: backend.id,
 				...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
 				variables,
 			}, signal, onUpdate);
@@ -180,8 +204,15 @@ export default function comfyuiImage(pi: ExtensionAPI) {
 					...pathResult.details,
 					filename,
 					...(pathResult.details.state === "completed" ? {
-						imageSettings: { aspectRatio: canvas.aspectRatio, megapixels: canvas.megapixels },
-						...(omittedBoxes > 0 ? { omittedLayoutBoxes: omittedBoxes } : {}),
+						imageSettings: {
+							aspectRatio: canvas.aspectRatio,
+							width: canvas.width,
+							height: canvas.height,
+							megapixels: canvas.megapixels,
+							steps,
+							upscaleFactor: 2,
+							boundingBoxCount: normalizedBoxes.length,
+						},
 					} : {}),
 				};
 			}
