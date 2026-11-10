@@ -761,7 +761,7 @@ test("image attachment tool results persist a single embed in md-log", async () 
 		assert.ok(persisted.includes(`![[${filename}]]`));
 		assert.equal((persisted.match(new RegExp(`!\\[\\[${filename}\\]\\]`, "g")) || []).length, 1);
 		assert.ok(persisted.startsWith(TRANSCRIPT_START));
-		assert.match(persisted, /# Lesson\n\nKeep authored text\./);
+		assert.match(persisted, /# Lesson\n\n> \[!note\] Notes\n> Keep authored text\./);
 	} finally {
 		fs.rmSync(vaultRoot, { recursive: true, force: true });
 	}
@@ -770,6 +770,11 @@ test("image attachment tool results persist a single embed in md-log", async () 
 test("linking a note imports its managed transcript once and keeps it in the managed section", async () => {
 	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pi-md-log-import-"));
 	const notePath = path.join(directory, "prior-session.md");
+	const notes = [
+		"my personal learning notes so far:",
+		"+ triggers set the threshold for revisiting a proposal.",
+		"\t- Keep practicing how to balance the bounds.",
+	].join("\n");
 	const initialNote = [
 		"# Learning note",
 		"",
@@ -778,9 +783,13 @@ test("linking a note imports its managed transcript once and keeps it in the man
 		"# Prior session",
 		"",
 		"Work already completed.",
-		"%% pi-md-log:end v1 %%",
 		"",
-		"Authored ending.",
+		notes,
+		"",
+		notes,
+		"",
+		notes,
+		"%% pi-md-log:end v1 %%",
 		"",
 		"<!-- pi-end-lesson:v1",
 		"Next: Continue after the completed question.",
@@ -829,19 +838,86 @@ test("linking a note imports its managed transcript once and keeps it in the man
 		assert.match(transcriptContext.message.content, /Work already completed\./);
 		assert.match(transcriptContext.message.content, /now included in the agent's conversation context/);
 		assert.match(transcriptContext.message.content, /do not use shell, grep, find, or file-reading tools/);
+		assert.equal((transcriptContext.message.content.match(/my personal learning notes so far:/g) || []).length, 1);
 		assert.doesNotMatch(transcriptContext.message.content, /pi-end-lesson/);
 		assert.match(firstWrite, /Authored introduction\./);
 		assert.match(firstWrite, /# Prior session[\s\S]*Work already completed\./);
-		assert.match(firstWrite, /Authored ending\./);
+		assert.match(firstWrite, /> \[!note\] Notes\n> my personal learning notes so far:/);
+		assert.match(firstWrite, /> \+ triggers set the threshold for revisiting a proposal\./);
+		assert.equal((firstWrite.match(/my personal learning notes so far:/g) || []).length, 1);
 		assert.equal((firstWrite.match(/Work already completed\./g) || []).length, 1);
 
 		await commands.get("md-log")(notePath, ctx);
 		const secondWrite = fs.readFileSync(notePath, "utf-8");
 		assert.equal(contextMessages.filter(({ message }) => message.customType === "md-log-context").length, 1);
 		assert.equal((secondWrite.match(/Work already completed\./g) || []).length, 1);
+		assert.equal((secondWrite.match(/my personal learning notes so far:/g) || []).length, 1);
 	} finally {
 		if (fs.existsSync(notePath)) fs.unlinkSync(notePath);
 		fs.rmdirSync(directory);
+	}
+});
+
+test("relinking after md-unlog does not copy imports from previously linked notes", async () => {
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pi-md-log-relink-"));
+	const firstNote = path.join(directory, "first.md");
+	const secondNote = path.join(directory, "second.md");
+	const thirdNote = path.join(directory, "third.md");
+	fs.writeFileSync(firstNote, "# First note\n\nFirst note-only transcript.\n", "utf-8");
+	fs.writeFileSync(secondNote, "# Second note\n\nSecond note authored text.\n", "utf-8");
+	fs.writeFileSync(thirdNote, "# Third note\n\nThird note authored text.\n", "utf-8");
+
+	try {
+		const commands = new Map();
+		const entries = [{ id: "root", type: "session" }];
+		const statuses = new Map();
+		const pi = {
+			on() {},
+			registerCommand(name, definition) { commands.set(name, definition.handler); },
+			registerTool() {},
+			appendEntry(customType, data) {
+				entries.push({
+					id: `custom-${entries.length}`,
+					parentId: entries.at(-1)?.id,
+					type: "custom",
+					customType,
+					data,
+				});
+			},
+			async sendMessage() {},
+		};
+		mdLog(pi);
+		const ctx = {
+			cwd: directory,
+			isIdle: () => true,
+			sessionManager: { getEntries: () => entries },
+			ui: {
+				theme: { fg: (_color, text) => text },
+				setStatus(key, value) { statuses.set(key, value); },
+				notify() {},
+			},
+		};
+
+		await commands.get("md-log")(firstNote, ctx);
+		assert.match(fs.readFileSync(firstNote, "utf-8"), /First note-only transcript\./);
+
+		await commands.get("md-log")(secondNote, ctx);
+		const secondContents = fs.readFileSync(secondNote, "utf-8");
+		assert.match(secondContents, /Second note authored text\./);
+		assert.doesNotMatch(secondContents, /First note-only transcript\./);
+
+		await commands.get("md-unlog")("", ctx);
+		assert.equal(entries.at(-1).customType, "md-log");
+		assert.equal(entries.at(-1).data.file, null);
+		assert.equal(statuses.get("md-log"), undefined);
+
+		await commands.get("md-log")(thirdNote, ctx);
+		const thirdContents = fs.readFileSync(thirdNote, "utf-8");
+		assert.match(thirdContents, /Third note authored text\./);
+		assert.doesNotMatch(thirdContents, /First note-only transcript\./);
+		assert.doesNotMatch(thirdContents, /Second note authored text\./);
+	} finally {
+		fs.rmSync(directory, { recursive: true, force: true });
 	}
 });
 
@@ -974,6 +1050,7 @@ test("/end-lesson saves a hidden resume marker and restores the latest state as 
 		assert.match(continuation.message.content, /linked md-log transcript is already supplied in conversation context/);
 		assert.match(continuation.message.content, /instead of searching for, opening, or shell-reading the note/);
 		assert.doesNotMatch(fs.readFileSync(notePath, "utf-8"), /pi-end-lesson/);
+		assert.match(fs.readFileSync(notePath, "utf-8"), /\*\*Agent resumed: \d{4}-\d{2}-\d{2}:\d{2}-\d{2}\*\*/);
 	} finally {
 		fs.rmSync(root, { recursive: true, force: true });
 	}

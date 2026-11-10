@@ -19,6 +19,7 @@ import {
 	stripSkillBlocks,
 	TRANSCRIPT_END,
 	placeManagedSectionAtTop,
+	uniqueMarkdownBlocks,
 	TRANSCRIPT_START,
 	TEACH_ATTACH_IMAGE_TOOL,
 	TEACH_BREEZE_TTS_TOOL,
@@ -79,6 +80,11 @@ function latestEndLessonState(markdown: string): string | undefined {
 		if (state) latest = state;
 	}
 	return latest;
+}
+
+function formatResumeTimestamp(date: Date): string {
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}:${pad(date.getHours())}-${pad(date.getMinutes())}`;
 }
 
 function stripEndLessonMarkers(markdown: string): string {
@@ -156,7 +162,10 @@ export default function mdLog(pi: ExtensionAPI) {
 	}
 
 	function syncTranscript(ctx: any): Promise<void> {
+		const target = logFile;
+		if (!target) return Promise.resolve();
 		return withLock(() => {
+			if (logFile !== target) return;
 			try {
 				writeTranscript(ctx);
 			} catch (error) {
@@ -166,10 +175,12 @@ export default function mdLog(pi: ExtensionAPI) {
 	}
 
 	function appendProseBlock(role: "user" | "assistant", text: string, ctx: any): Promise<void> {
+		const target = logFile;
+		if (!target) return Promise.resolve();
 		return withLock(() => {
-			if (!logFile) return;
+			if (logFile !== target) return;
 			try {
-				const existing = fs.readFileSync(logFile, "utf-8");
+				const existing = fs.readFileSync(target, "utf-8");
 				if (hasRecentTranscriptBlock(existing, role, text)) return;
 				transcriptBlocks.push({ kind: "prose", role, text });
 				writeTranscript(ctx);
@@ -180,12 +191,14 @@ export default function mdLog(pi: ExtensionAPI) {
 	}
 
 	function syncMastery(conceptId: string, masteryState: MasteryRecord, ctx: any): Promise<void> {
+		const target = logFile;
+		if (!target) return Promise.resolve();
 		return withLock(() => {
-			if (!logFile) return;
+			if (logFile !== target) return;
 			try {
-				const existing = fs.readFileSync(logFile, "utf-8");
+				const existing = fs.readFileSync(target, "utf-8");
 				const updated = updateMasteryFrontmatter(existing, conceptId, masteryState);
-				if (updated !== existing) fs.writeFileSync(logFile, updated, "utf-8");
+				if (updated !== existing) fs.writeFileSync(target, updated, "utf-8");
 				writeTranscript(ctx);
 			} catch (error) {
 				notifyWriteFailure(ctx, error);
@@ -194,10 +207,12 @@ export default function mdLog(pi: ExtensionAPI) {
 	}
 
 	function syncBackfilledMastery(ctx: any): Promise<void> {
+		const target = logFile;
+		if (!target) return Promise.resolve();
 		return withLock(() => {
-			if (!logFile) return;
+			if (logFile !== target) return;
 			try {
-				let existing = fs.readFileSync(logFile, "utf-8");
+				let existing = fs.readFileSync(target, "utf-8");
 				let updated = existing;
 				const latest = new Map<string, MasteryRecord>();
 				for (const block of transcriptBlocks) {
@@ -210,7 +225,7 @@ export default function mdLog(pi: ExtensionAPI) {
 				for (const [conceptId, masteryState] of latest) {
 					updated = updateMasteryFrontmatter(updated, conceptId, masteryState);
 				}
-				if (updated !== existing) fs.writeFileSync(logFile, updated, "utf-8");
+				if (updated !== existing) fs.writeFileSync(target, updated, "utf-8");
 				writeTranscript(ctx);
 			} catch (error) {
 				notifyWriteFailure(ctx, error);
@@ -225,7 +240,7 @@ export default function mdLog(pi: ExtensionAPI) {
 		} catch (error) {
 			throw new Error(`Could not read session history: ${errorMessage(error)}`);
 		}
-		const result = buildBackfill(entries);
+		const result = buildBackfill(entries, logFile ?? undefined);
 		transcriptBlocks = result.blocks;
 		return { entries: result.entries, diagnostics: result.diagnostics };
 	}
@@ -250,8 +265,9 @@ export default function mdLog(pi: ExtensionAPI) {
 			previousTranscript ? stripEndLessonMarkers(previousTranscript).trim() : "",
 			stripEndLessonMarkers(outsideProse).trim(),
 		].filter(Boolean).join("\n\n");
-		if (!imported || imported === renderTranscript(transcriptBlocks).trim()) return false;
-		const previousTranscriptText = imported;
+		const uniqueImported = uniqueMarkdownBlocks(imported).join("\n\n");
+		if (!uniqueImported || uniqueImported === renderTranscript(transcriptBlocks).trim()) return false;
+		const previousTranscriptText = uniqueImported;
 
 		if (typeof pi.sendMessage === "function") {
 			await pi.sendMessage({
@@ -443,7 +459,10 @@ export default function mdLog(pi: ExtensionAPI) {
 				lastLinkData = entry.data;
 			}
 		}
-		const result = buildBackfill(sessionEntries);
+		const linkedFile = isRecord(lastLinkData) && typeof lastLinkData.file === "string"
+			? lastLinkData.file
+			: undefined;
+		const result = buildBackfill(sessionEntries, linkedFile);
 		transcriptBlocks = result.blocks;
 		if (!isRecord(lastLinkData) || typeof lastLinkData.file !== "string" || !lastLinkData.file) {
 			if (isRecord(lastLinkData) && lastLinkData.file === null && event.reason !== "new" && event.reason !== "fork") {
@@ -531,7 +550,12 @@ export default function mdLog(pi: ExtensionAPI) {
 							block.kind === "markdown"
 								? { ...block, markdown: stripEndLessonMarkers(block.markdown) }
 								: block);
-						if (cleanedNote !== note) writeTranscript(ctx);
+						transcriptBlocks.push({
+							kind: "markdown",
+							file: target,
+							markdown: `**Agent resumed: ${formatResumeTimestamp(new Date())}**`,
+						});
+						writeTranscript(ctx);
 					});
 				}
 				await pi.sendMessage({

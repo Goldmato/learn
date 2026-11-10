@@ -79,7 +79,7 @@ export interface TranscriptOption {
 
 export type TranscriptBlock =
 	| { kind: "prose"; role: "user" | "assistant"; text: string; entryId?: string }
-	| { kind: "markdown"; file: string; markdown: string }
+	| { kind: "markdown"; file: string; markdown: string; wrapAsNotes?: boolean }
 	| {
 		kind: "quiz";
 		callId: string;
@@ -502,7 +502,11 @@ export function renderTranscript(blocks: TranscriptBlock[]): string {
 		}
 
 		if (block.kind === "markdown") {
-			if (block.markdown.trim()) output.push(block.markdown.trim());
+			if (block.markdown.trim()) {
+				output.push(block.wrapAsNotes
+					? callout("note", "Notes", block.markdown.trim().split(/\r?\n/))
+					: block.markdown.trim());
+			}
 			continue;
 		}
 
@@ -1258,9 +1262,8 @@ export function carryOverNoteAudio(previous: string | undefined, rendered: strin
 	return output.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 /**
- * The managed section owns everything inside its markers, so prose written above
- * them can never be a placement anchor. On link, move the start marker above that
- * prose: it then renders once inside the section instead of twice.
+ * The managed section owns everything inside its markers. On link, move authored
+ * prose on either side into it so imported text is rendered and anchored once.
  */
 export function placeManagedSectionAtTop(markdown: string): string {
 	const frontmatter = /^(?:\uFEFF)?---\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(markdown)?.[0] ?? "";
@@ -1269,11 +1272,13 @@ export function placeManagedSectionAtTop(markdown: string): string {
 	const end = start ? markerLines(rest, TRANSCRIPT_END).find((candidate) => candidate.start > start.start) : undefined;
 	const hasSection = Boolean(start && end);
 	const before = (hasSection ? rest.slice(0, start!.start) : rest).trim();
-	const after = (hasSection ? rest.slice(end!.contentEnd) : "").trim();
+	const trailing = (hasSection ? rest.slice(end!.contentEnd) : "").trim();
+	const endLessonMarkers = trailing.match(/<!-- pi-end-lesson:v1\r?\n[\s\S]*?\r?\n-->/g) ?? [];
+	const after = trailing.replace(/<!-- pi-end-lesson:v1\r?\n[\s\S]*?\r?\n-->/g, "").trim();
 	const inner = (hasSection ? rest.slice(start!.contentEnd, end!.start) : "").trim();
-	const merged = [before, inner].filter(Boolean).join("\n\n");
+	const merged = [before, inner, after].filter(Boolean).join("\n\n");
 	const section = merged ? `${TRANSCRIPT_START}\n\n${merged}\n\n${TRANSCRIPT_END}` : `${TRANSCRIPT_START}\n\n${TRANSCRIPT_END}`;
-	return `${frontmatter}${section}${after ? `\n\n${after}` : ""}\n`;
+	return `${frontmatter}${section}${endLessonMarkers.length ? `\n\n${endLessonMarkers.join("\n\n")}` : ""}\n`;
 }
 
 export function replaceManagedTranscript(existing: string, transcript: string): string {
@@ -1353,6 +1358,20 @@ export function splitMarkdownBlocks(markdown: string): string[] {
 	return blocks;
 }
 
+export function uniqueMarkdownBlocks(markdown: string): string[] {
+	const seen = new Set<string>();
+	return splitMarkdownBlocks(markdown).filter((block) => {
+		if (seen.has(block)) return false;
+		seen.add(block);
+		return true;
+	});
+}
+
+function isAmbiguousImportedText(markdown: string): boolean {
+	const firstLine = markdown.split(/\r?\n/, 1)[0].trim();
+	return !/^(?:#{1,6}\s|>|`{3,}|~{3,}|[-*+]\s|\d+[.)]\s|!\[\[|!\[[^\]]*\]\(|\|.*\||<!--|%%)/.test(firstLine);
+}
+
 /**
  * Whether an anchor appears in the rendered transcript. Placement resolves to
  * the first matching block, so a passage quoted again later still works.
@@ -1365,7 +1384,7 @@ export function transcriptContainsAnchor(entriesValue: unknown, anchor: string):
 		(block.kind === "markdown" && block.markdown.includes(needle)));
 }
 
-export function buildBackfill(entriesValue: unknown): BackfillResult {
+export function buildBackfill(entriesValue: unknown, notePath?: string): BackfillResult {
 	const diagnostics: string[] = [];
 	if (!Array.isArray(entriesValue)) {
 		return { blocks: [], entries: 0, diagnostics: ["Session entries were not an array."] };
@@ -1410,6 +1429,7 @@ export function buildBackfill(entriesValue: unknown): BackfillResult {
 
 	const blocks: TranscriptBlock[] = [];
 	const importedMarkdown: Extract<TranscriptBlock, { kind: "markdown" }>[] = [];
+	const importedMarkdownSeen = new Set<string>();
 	const toolCalls = new Map<string, {
 		name: string;
 		args: Record<string, any>;
@@ -1428,8 +1448,16 @@ export function buildBackfill(entriesValue: unknown): BackfillResult {
 		if (entry.type === "custom") {
 			if (entry.customType === "md-log-import" && isRecord(entry.data) && typeof entry.data.markdown === "string") {
 				const file = safeText(entry.data.file);
-				for (const markdown of splitMarkdownBlocks(entry.data.markdown)) {
-					importedMarkdown.push({ kind: "markdown", file, markdown });
+				if (notePath && (!file || path.resolve(file) !== path.resolve(notePath))) continue;
+				for (const markdown of uniqueMarkdownBlocks(entry.data.markdown)) {
+					if (importedMarkdownSeen.has(markdown)) continue;
+					importedMarkdownSeen.add(markdown);
+					importedMarkdown.push({
+						kind: "markdown",
+						file,
+						markdown,
+						wrapAsNotes: isAmbiguousImportedText(markdown),
+					});
 				}
 				continue;
 			}

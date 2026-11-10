@@ -379,6 +379,55 @@ test("backfill places imported note content before the current session transcrip
 	assert.match(markdown, /Completed work\./);
 });
 
+test("backfill scopes imported note content to the linked note when requested", () => {
+	const entries = [
+		{ id: "root", type: "session" },
+		{ id: "first-import", parentId: "root", type: "custom", customType: "md-log-import", data: {
+			file: "first-note.md",
+			markdown: "First note transcript.",
+		} },
+		{ id: "second-import", parentId: "first-import", type: "custom", customType: "md-log-import", data: {
+			file: "second-note.md",
+			markdown: "Second note transcript.",
+		} },
+	];
+
+	assert.match(renderTranscript(buildBackfill(entries, "first-note.md").blocks), /First note transcript\./);
+	assert.doesNotMatch(renderTranscript(buildBackfill(entries, "first-note.md").blocks), /Second note transcript\./);
+	assert.match(renderTranscript(buildBackfill(entries, "second-note.md").blocks), /Second note transcript\./);
+	assert.doesNotMatch(renderTranscript(buildBackfill(entries, "second-note.md").blocks), /First note transcript\./);
+});
+
+test("backfill wraps ambiguous imported prose in a Notes callout", () => {
+	const result = buildBackfill([
+		{ id: "root", type: "session" },
+		{ id: "import", parentId: "root", type: "custom", customType: "md-log-import", data: {
+			file: "prior-session.md",
+			markdown: "my personal learning notes so far:\n+ triggers set the threshold for revisiting a proposal.\n\t- Keep practicing how to balance the bounds.\n\n## Existing section\n\n> [!warning] Existing callout\n> Preserve this structure.",
+		} },
+	]);
+	const markdown = renderTranscript(result.blocks);
+
+	assert.match(markdown, /> \[!note\] Notes\n> my personal learning notes so far:\n> \+ triggers set the threshold for revisiting a proposal\.\n> \t- Keep practicing how to balance the bounds\./);
+	assert.match(markdown, /^## Existing section$/m);
+	assert.match(markdown, /^> \[!warning\] Existing callout$/m);
+	assert.equal((markdown.match(/my personal learning notes so far:/g) || []).length, 1);
+});
+
+test("backfill collapses repeated exact imported blocks", () => {
+	const duplicate = "> [!note] Notes\n> my personal learning notes so far:\n> + one reflection.";
+	const result = buildBackfill([
+		{ id: "root", type: "session" },
+		{ id: "import", parentId: "root", type: "custom", customType: "md-log-import", data: {
+			file: "prior-session.md",
+			markdown: [duplicate, duplicate, duplicate].join("\n\n"),
+		} },
+	]);
+	const markdown = renderTranscript(result.blocks);
+
+	assert.equal((markdown.match(/my personal learning notes so far:/g) || []).length, 1);
+});
+
 test("backfill pairs shuffled quiz options with results and tolerates missing metadata", () => {
 	const entries = [
 		{ id: "root", type: "session" },
@@ -1134,13 +1183,15 @@ test("managed transcript replacement leaves a blank line before the end marker",
 	assert.equal(extractManagedTranscript(updated), "New body");
 });
 
-test("linking pulls the managed section above authored prose so it can anchor placements", () => {
+test("linking pulls authored prose into the managed section and preserves end-lesson state", () => {
 	const authored = ["---", "title: x", "---", "", "Alpha.", "", "Bravo.", "", TRANSCRIPT_START, "", TRANSCRIPT_END, "", "Trailing note.", ""].join("\n");
-	const placed = placeManagedSectionAtTop(authored);
+	const withEndLessonState = `${authored}\n<!-- pi-end-lesson:v1\nLesson ended.\n-->`;
+	const placed = placeManagedSectionAtTop(withEndLessonState);
 	assert.ok(placed.startsWith("---\ntitle: x\n---\n"));
 	assert.ok(placed.indexOf(TRANSCRIPT_START) < placed.indexOf("Alpha."));
 	assert.ok(placed.indexOf("Bravo.") < placed.indexOf(TRANSCRIPT_END));
-	assert.ok(placed.indexOf(TRANSCRIPT_END) < placed.indexOf("Trailing note."));
+	assert.ok(placed.indexOf("Trailing note.") < placed.indexOf(TRANSCRIPT_END));
+	assert.ok(placed.indexOf(TRANSCRIPT_END) < placed.indexOf("<!-- pi-end-lesson:v1"));
 	assert.equal((placed.match(/Alpha\./g) || []).length, 1);
 	assert.equal(placeManagedSectionAtTop(placed), placed);
 
